@@ -2,6 +2,7 @@ package app.liftlog
 
 import android.app.Application
 import android.content.Context
+import app.liftlog.data.AutoBackup
 import app.liftlog.data.BackupRepository
 import app.liftlog.data.ExerciseSeed
 import app.liftlog.data.SettingsRepository
@@ -23,6 +24,7 @@ class AppContainer(private val context: Context) {
     val settings = SettingsRepository(context)
     val restTimer = RestTimer(context)
     val backup by lazy { BackupRepository(context, database.backupDao(), exerciseDao) }
+    val autoBackup by lazy { AutoBackup(context, backup, settings, applicationScope) }
 
     /** Loads the bundled exercise library on first launch and whenever it has grown. */
     fun seedExercisesIfNeeded() {

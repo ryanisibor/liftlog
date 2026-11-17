@@ -34,7 +34,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.liftlog.data.AutoBackup
+import app.liftlog.data.AutoBackupStatus
 import app.liftlog.data.BackupRepository
+import app.liftlog.ui.formatDateTime
 import app.liftlog.data.InvalidBackupException
 import app.liftlog.data.SettingsRepository
 import app.liftlog.domain.WeightUnit
@@ -52,8 +55,12 @@ import java.time.LocalDate
 class SettingsViewModel(
     private val settings: SettingsRepository,
     private val backup: BackupRepository,
+    private val autoBackup: AutoBackup,
     private val restTimer: RestTimer,
 ) : ViewModel() {
+    val autoBackupStatus = settings.autoBackup
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AutoBackupStatus())
+
     val unit = settings.weightUnit.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WeightUnit.KG)
     val restSeconds = settings.restSeconds
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsRepository.DEFAULT_REST_SECONDS)
@@ -99,6 +106,37 @@ class SettingsViewModel(
         }
     }
 
+    fun exportCsv(uri: Uri) {
+        viewModelScope.launch {
+            _backupMessage.value = try {
+                "Spreadsheet saved: ${backup.exportCsvTo(uri)} sets."
+            } catch (_: IOException) {
+                "The spreadsheet could not be saved. Try a different location."
+            } catch (_: SecurityException) {
+                "The spreadsheet could not be saved. Try a different location."
+            }
+        }
+    }
+
+    fun enableAutoBackup(folder: Uri) {
+        viewModelScope.launch {
+            _backupMessage.value = try {
+                autoBackup.enable(folder)
+                null
+            } catch (_: SecurityException) {
+                "That folder can't be used for automatic backup. Choose another."
+            }
+        }
+    }
+
+    fun disableAutoBackup() {
+        viewModelScope.launch { autoBackup.disable() }
+    }
+
+    fun backUpNow() {
+        viewModelScope.launch { autoBackup.runNow() }
+    }
+
     private fun workouts(count: Int) = if (count == 1) "1 workout" else "$count workouts"
 }
 
@@ -106,7 +144,10 @@ class SettingsViewModel(
 @Composable
 fun SettingsScreen() {
     val container = appContainer()
-    val viewModel = viewModel { SettingsViewModel(container.settings, container.backup, container.restTimer) }
+    val viewModel = viewModel {
+        SettingsViewModel(container.settings, container.backup, container.autoBackup, container.restTimer)
+    }
+    val autoStatus by viewModel.autoBackupStatus.collectAsStateWithLifecycle()
     val unit by viewModel.unit.collectAsStateWithLifecycle()
     val restSeconds by viewModel.restSeconds.collectAsStateWithLifecycle()
     val backupMessage by viewModel.backupMessage.collectAsStateWithLifecycle()
@@ -118,6 +159,12 @@ fun SettingsScreen() {
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri -> pendingImport = uri }
+    val csvLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri -> uri?.let(viewModel::exportCsv) }
+    val folderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri -> uri?.let(viewModel::enableAutoBackup) }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         Column(
@@ -146,7 +193,21 @@ fun SettingsScreen() {
             }
             Hint("Starts automatically each time you tick a set.")
 
-            SectionTitle("Backup")
+            SectionTitle("Automatic backup")
+            AutoBackupSection(
+                status = autoStatus,
+                onChooseFolder = { folderLauncher.launch(null) },
+                onTurnOff = viewModel::disableAutoBackup,
+                onBackUpNow = viewModel::backUpNow,
+            )
+
+            SectionTitle("Spreadsheet")
+            FilledTonalButton(onClick = { csvLauncher.launch("liftlog-sets-${LocalDate.now()}.csv") }) {
+                Text("Export spreadsheet (CSV)")
+            }
+            Hint("One row per set, for Excel or Google Sheets. For analysis only; it can't be restored from.")
+
+            SectionTitle("Manual backup")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 FilledTonalButton(onClick = { exportLauncher.launch("liftlog-backup-${LocalDate.now()}.json") }) {
                     Text("Export backup")
@@ -179,6 +240,41 @@ fun SettingsScreen() {
             dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancel") } },
         )
     }
+}
+
+@Composable
+private fun AutoBackupSection(
+    status: AutoBackupStatus,
+    onChooseFolder: () -> Unit,
+    onTurnOff: () -> Unit,
+    onBackUpNow: () -> Unit,
+) {
+    if (!status.enabled) {
+        FilledTonalButton(onClick = onChooseFolder) { Text("Choose backup folder") }
+        Hint(
+            "Off. Choose a folder and the app saves a backup and a spreadsheet there after every " +
+                "workout you finish or edit, keeping the last ${AutoBackup.KEEP_BACKUPS} days.",
+        )
+        return
+    }
+    Text(
+        when {
+            status.lastFailed -> "The last automatic backup failed. Choose the folder again."
+            status.lastSuccessAt != null -> "On. Last backup ${formatDateTime(status.lastSuccessAt)}."
+            else -> "On. No backup made yet."
+        },
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (status.lastFailed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        FilledTonalButton(onClick = onBackUpNow) { Text("Back up now") }
+        OutlinedButton(onClick = onChooseFolder) { Text("Change folder") }
+    }
+    OutlinedButton(onClick = onTurnOff) { Text("Turn off") }
+    Hint(
+        "Saves after every workout you finish or edit. The folder is on this phone, so it survives " +
+            "the app being removed but not the phone being lost. Export a manual backup to Google Drive now and then.",
+    )
 }
 
 @Composable

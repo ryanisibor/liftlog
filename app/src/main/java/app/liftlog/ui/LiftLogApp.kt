@@ -228,7 +228,14 @@ private fun activeWorkoutViewModel(workoutEntry: NavBackStackEntry): ActiveWorko
     val container = appContainer()
     val workoutId = workoutEntry.id()
     return viewModel(viewModelStoreOwner = workoutEntry) {
-        ActiveWorkoutViewModel(workoutId, container.workoutDao, container.exerciseDao, container.settings, container.restTimer)
+        ActiveWorkoutViewModel(
+            workoutId,
+            container.workoutDao,
+            container.exerciseDao,
+            container.settings,
+            container.restTimer,
+            onHistoryChanged = container.autoBackup::request,
+        )
     }
 }
 

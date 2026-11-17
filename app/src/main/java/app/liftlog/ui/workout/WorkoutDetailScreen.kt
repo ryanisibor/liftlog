@@ -63,6 +63,7 @@ class WorkoutDetailViewModel(
     private val workoutId: Long,
     private val workoutDao: WorkoutDao,
     settings: SettingsRepository,
+    private val onHistoryChanged: () -> Unit,
 ) : ViewModel() {
     val state: StateFlow<WorkoutDetailState> = combine(
         workoutDao.observeWorkout(workoutId),
@@ -73,7 +74,10 @@ class WorkoutDetailViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkoutDetailState())
 
     fun delete() {
-        viewModelScope.launch { workoutDao.deleteWorkout(workoutId) }
+        viewModelScope.launch {
+            workoutDao.deleteWorkout(workoutId)
+            onHistoryChanged()
+        }
     }
 }
 
@@ -83,7 +87,7 @@ class WorkoutDetailViewModel(
 fun WorkoutDetailScreen(workoutId: Long, onEdit: () -> Unit, onBack: () -> Unit) {
     val container = appContainer()
     val viewModel = viewModel(key = "workout-detail-$workoutId") {
-        WorkoutDetailViewModel(workoutId, container.workoutDao, container.settings)
+        WorkoutDetailViewModel(workoutId, container.workoutDao, container.settings, container.autoBackup::request)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     var confirmDelete by rememberSaveable { mutableStateOf(false) }

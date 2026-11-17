@@ -97,6 +97,22 @@ class BackupRepository(
         backup.workouts.size
     }
 
+    /** The backup file's contents as it would be exported right now. */
+    suspend fun backupJson(): String =
+        BackupCodec.encode(backupDao.snapshot().copy(exportedAt = System.currentTimeMillis()))
+
+    /** The spreadsheet export's contents as it would be exported right now. */
+    suspend fun setsCsv(): String = CsvExport.build(backupDao.setExportRows(), java.time.ZoneId.systemDefault())
+
+    /** Writes the spreadsheet export to a file the user chose. Returns the number of sets written. */
+    suspend fun exportCsvTo(uri: Uri): Int = withContext(Dispatchers.IO) {
+        val rows = backupDao.setExportRows()
+        val stream = context.contentResolver.openOutputStream(uri, "wt")
+            ?: throw java.io.IOException("Could not open the chosen file")
+        stream.bufferedWriter().use { it.write(CsvExport.build(rows, java.time.ZoneId.systemDefault())) }
+        rows.size
+    }
+
     /**
      * Replaces all data with the contents of the file. Returns the number of workouts loaded.
      * Throws [InvalidBackupException] if the file is unusable; existing data is then untouched.

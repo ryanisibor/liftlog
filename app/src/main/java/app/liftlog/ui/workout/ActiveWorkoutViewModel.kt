@@ -49,6 +49,8 @@ class ActiveWorkoutViewModel(
     private val exerciseDao: ExerciseDao,
     settings: SettingsRepository,
     private val restTimer: RestTimer,
+    /** Called when finished-workout data changed, so the automatic backup can run. */
+    private val onHistoryChanged: () -> Unit,
 ) : ViewModel() {
 
     /** Name of the program day this workout came from, e.g. "Upper Body A"; null if ad-hoc. */
@@ -190,7 +192,11 @@ class ActiveWorkoutViewModel(
     }
 
     fun doneEditing(onDone: (kept: Boolean) -> Unit) {
-        viewModelScope.launch { onDone(workoutDao.pruneWorkout(workoutId)) }
+        viewModelScope.launch {
+            val kept = workoutDao.pruneWorkout(workoutId)
+            onHistoryChanged()
+            onDone(kept)
+        }
     }
 
     fun addRestTime(seconds: Int) = restTimer.addSeconds(seconds)
@@ -201,7 +207,9 @@ class ActiveWorkoutViewModel(
     fun finish(onDone: (saved: Boolean) -> Unit) {
         viewModelScope.launch {
             restTimer.cancel()
-            onDone(workoutDao.finishWorkout(workoutId, System.currentTimeMillis()))
+            val saved = workoutDao.finishWorkout(workoutId, System.currentTimeMillis())
+            if (saved) onHistoryChanged()
+            onDone(saved)
         }
     }
 

@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
 import app.liftlog.data.Backup
+import app.liftlog.data.SetExportRow
 
 /** Whole-database read and replace, used only by export and import. */
 @Dao
@@ -32,6 +33,24 @@ interface BackupDao {
     @Query("DELETE FROM program_day WHERE 1 = 1") suspend fun clearProgramDays()
     @Query("DELETE FROM program WHERE 1 = 1") suspend fun clearPrograms()
     @Query("DELETE FROM exercise WHERE 1 = 1") suspend fun clearExercises()
+
+    /** Every completed set of every finished workout, oldest first, for the spreadsheet export. */
+    @Query(
+        """
+        SELECT w.startedAt AS startedAt, d.name AS dayName, e.name AS exercise,
+            e.primaryMuscle AS primaryMuscle, e.equipment AS equipment,
+            we.position AS exercisePosition, s.setNumber AS setNumber, s.isWarmup AS isWarmup,
+            s.weightKg AS weightKg, s.reps AS reps
+        FROM set_entry s
+        JOIN workout_exercise we ON s.workoutExerciseId = we.id
+        JOIN workout w ON w.id = we.workoutId
+        JOIN exercise e ON e.id = we.exerciseId
+        LEFT JOIN program_day d ON d.id = w.programDayId
+        WHERE s.completed = 1 AND w.finishedAt IS NOT NULL
+        ORDER BY w.startedAt, we.position, s.setNumber
+        """,
+    )
+    suspend fun setExportRows(): List<SetExportRow>
 
     @Transaction
     suspend fun snapshot(): Backup = Backup(
