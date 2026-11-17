@@ -5,6 +5,8 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import app.liftlog.data.Equipment
+import app.liftlog.data.Muscle
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -18,6 +20,17 @@ interface ExerciseDao {
     /** Throws SQLiteConstraintException if the name is already taken. */
     @Insert
     suspend fun insert(exercise: Exercise): Long
+
+    @Query("SELECT * FROM exercise WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun findByName(name: String): Exercise?
+
+    /** Renames or reclassifies a custom exercise. Throws SQLiteConstraintException if the name is taken. */
+    @Query("UPDATE exercise SET name = :name, primaryMuscle = :muscle, equipment = :equipment WHERE id = :id AND isCustom = 1")
+    suspend fun updateCustom(id: Long, name: String, muscle: Muscle, equipment: Equipment)
+
+    /** Hides an exercise from the library and pickers. Its logged history is kept. */
+    @Query("UPDATE exercise SET archived = :archived WHERE id = :id")
+    suspend fun setArchived(id: Long, archived: Boolean)
 
     @Query("UPDATE exercise SET notes = :notes WHERE id = :id")
     suspend fun setNotes(id: Long, notes: String)
@@ -139,6 +152,20 @@ interface WorkoutDao {
     )
     suspend fun previousSets(exerciseId: Long, currentWorkoutId: Long): List<SetEntry>
 
+    /** Every completed working set of [exerciseId] from finished workouts that started before the current one. */
+    @Query(
+        """
+        SELECT s.weightKg AS weightKg, s.reps AS reps
+        FROM set_entry s
+        JOIN workout_exercise we ON s.workoutExerciseId = we.id
+        JOIN workout w ON w.id = we.workoutId
+        WHERE we.exerciseId = :exerciseId AND s.completed = 1 AND s.isWarmup = 0
+            AND w.finishedAt IS NOT NULL AND w.id != :currentWorkoutId
+            AND w.startedAt <= (SELECT startedAt FROM workout WHERE id = :currentWorkoutId)
+        """,
+    )
+    suspend fun priorSets(exerciseId: Long, currentWorkoutId: Long): List<PriorSetRow>
+
     @Query(
         """
         SELECT w.id AS workoutId, w.startedAt, s.setNumber, s.weightKg, s.reps, s.isWarmup
@@ -203,6 +230,35 @@ interface WorkoutDao {
 
     @Query("SELECT COUNT(*) FROM workout WHERE finishedAt IS NOT NULL")
     fun observeFinishedWorkoutCount(): Flow<Int>
+
+    /** Completed working sets per exercise for workouts started in [from, until). */
+    @Query(
+        """
+        SELECT e.primaryMuscle AS primaryMuscle, e.secondaryMuscles AS secondaryMuscles, COUNT(*) AS sets
+        FROM set_entry s
+        JOIN workout_exercise we ON s.workoutExerciseId = we.id
+        JOIN workout w ON w.id = we.workoutId
+        JOIN exercise e ON e.id = we.exerciseId
+        WHERE s.completed = 1 AND s.isWarmup = 0 AND w.finishedAt IS NOT NULL
+            AND w.startedAt >= :from AND w.startedAt < :until
+        GROUP BY e.id
+        """,
+    )
+    fun observeMuscleSetRows(from: Long, until: Long): Flow<List<MuscleSetRow>>
+
+    /** The exercises used most recently, newest first, for the top of the picker. */
+    @Query(
+        """
+        SELECT we.exerciseId FROM workout_exercise we
+        JOIN workout w ON w.id = we.workoutId
+        JOIN exercise e ON e.id = we.exerciseId
+        WHERE e.archived = 0
+        GROUP BY we.exerciseId
+        ORDER BY MAX(w.startedAt) DESC
+        LIMIT :limit
+        """,
+    )
+    fun observeRecentExerciseIds(limit: Int): Flow<List<Long>>
 
     // --- finishing ---
 

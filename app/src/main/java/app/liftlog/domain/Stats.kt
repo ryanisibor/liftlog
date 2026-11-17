@@ -96,6 +96,60 @@ fun weeklyCounts(startTimes: List<Long>, weeks: Int, today: LocalDate, zone: Zon
     return counts.mapIndexed { index, count -> WeekCount(firstWeek.plusWeeks(index.toLong()), count) }
 }
 
+/** The best figures for an exercise before the current workout. */
+data class PriorBest(val maxWeightKg: Double, val bestOneRepMaxKg: Double?)
+
+enum class RecordKind { WEIGHT, ONE_REP_MAX }
+
+/** Bests over earlier weighted sets, or null if the exercise has no weighted history yet. */
+fun priorBest(sets: List<LoggedSet>): PriorBest? {
+    val weighted = sets.filter { (it.weightKg ?: 0.0) > 0 && (it.reps ?: 0) > 0 }
+    if (weighted.isEmpty()) return null
+    return PriorBest(
+        maxWeightKg = weighted.maxOf { it.weightKg!! },
+        bestOneRepMaxKg = weighted.mapNotNull { estimateOneRepMax(it.weightKg!!, it.reps!!) }.maxOrNull(),
+    )
+}
+
+/**
+ * Which records a set beats. With no history there is nothing to beat, so a first session
+ * earns no records; otherwise every set of a new exercise would be flagged.
+ */
+fun recordKinds(weightKg: Double?, reps: Int?, prior: PriorBest?): Set<RecordKind> {
+    if (prior == null || weightKg == null || reps == null || reps < 1 || weightKg <= 0) return emptySet()
+    val kinds = mutableSetOf<RecordKind>()
+    if (weightKg > prior.maxWeightKg + RECORD_MARGIN) kinds += RecordKind.WEIGHT
+    val estimate = estimateOneRepMax(weightKg, reps)
+    if (estimate != null && prior.bestOneRepMaxKg != null && estimate > prior.bestOneRepMaxKg + RECORD_MARGIN) {
+        kinds += RecordKind.ONE_REP_MAX
+    }
+    return kinds
+}
+
+/** Guards against rounding noise from unit conversion being counted as a record. */
+private const val RECORD_MARGIN = 0.005
+
+/** Sets of one exercise and the muscles it trains, by name so this file stays free of app types. */
+data class MuscleSets<M>(val primary: M, val secondary: List<M>, val sets: Int)
+
+/**
+ * Sets per muscle: each set counts fully for the exercise's main muscle and as half a set
+ * for each secondary muscle, a common convention for tallying training volume.
+ * Returned largest first.
+ */
+fun <M> setsPerMuscle(rows: List<MuscleSets<M>>): List<Pair<M, Double>> {
+    val totals = LinkedHashMap<M, Double>()
+    for (row in rows) {
+        totals[row.primary] = (totals[row.primary] ?: 0.0) + row.sets
+        for (muscle in row.secondary) {
+            if (muscle != row.primary) totals[muscle] = (totals[muscle] ?: 0.0) + row.sets * SECONDARY_MUSCLE_CREDIT
+        }
+    }
+    return totals.entries.map { it.key to it.value }.sortedByDescending { it.second }
+}
+
+const val SECONDARY_MUSCLE_CREDIT = 0.5
+
 /** One finished workout, reduced to what the month totals need. */
 data class WorkoutTotals(val durationSeconds: Long, val volumeKg: Double)
 

@@ -38,7 +38,15 @@ import app.liftlog.ui.appContainer
 import app.liftlog.ui.components.BarChart
 import app.liftlog.ui.components.ChartPoint
 import app.liftlog.ui.formatDate
+import app.liftlog.domain.MuscleSets
+import app.liftlog.domain.setsPerMuscle
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import java.time.DayOfWeek
+import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -54,9 +62,36 @@ data class ProgressState(
     val unit: WeightUnit = WeightUnit.KG,
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ProgressViewModel(workoutDao: WorkoutDao, settings: SettingsRepository) : ViewModel() {
     private val zone = ZoneId.systemDefault()
     private val today = LocalDate.now(zone)
+    private val thisWeek = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+
+    /** Weeks back from the current one for the sets-per-muscle card; 0 is this week. */
+    private val weeksBack = MutableStateFlow(0)
+
+    val muscleWeek: StateFlow<MuscleWeekState> = weeksBack.flatMapLatest { back ->
+        val weekStart = thisWeek.minusWeeks(back.toLong())
+        val from = weekStart.atStartOfDay(zone).toInstant().toEpochMilli()
+        val until = weekStart.plusWeeks(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        workoutDao.observeMuscleSetRows(from, until).map { rows ->
+            MuscleWeekState(
+                weekStart = weekStart,
+                isCurrentWeek = back == 0,
+                totals = setsPerMuscle(rows.map { MuscleSets(it.primaryMuscle, it.secondaryMuscles, it.sets) }),
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MuscleWeekState(thisWeek))
+
+    fun previousWeek() {
+        weeksBack.value += 1
+    }
+
+    fun nextWeek() {
+        if (weeksBack.value > 0) weeksBack.value -= 1
+    }
+
     private val since = today.minusWeeks(WEEKS_SHOWN.toLong()).atStartOfDay(zone).toInstant().toEpochMilli()
 
     val state: StateFlow<ProgressState> = combine(
@@ -88,6 +123,7 @@ fun ProgressScreen(onOpenExercise: (Long) -> Unit) {
     val container = appContainer()
     val viewModel = viewModel { ProgressViewModel(container.workoutDao, container.settings) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val muscleWeek by viewModel.muscleWeek.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Progress") }) }) { padding ->
         LazyColumn(
@@ -127,6 +163,8 @@ fun ProgressScreen(onOpenExercise: (Long) -> Unit) {
                     }
                 }
             }
+
+            item { MuscleVolumeCard(muscleWeek, viewModel::previousWeek, viewModel::nextWeek) }
 
             item {
                 Text(

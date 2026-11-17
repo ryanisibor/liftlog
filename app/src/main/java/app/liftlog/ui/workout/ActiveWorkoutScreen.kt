@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import app.liftlog.ui.formatDateTime
@@ -73,6 +75,13 @@ fun ActiveWorkoutScreen(
     var notesFor by remember { mutableStateOf<WorkoutExerciseWithSets?>(null) }
     var confirmRemove by remember { mutableStateOf<WorkoutExerciseWithSets?>(null) }
 
+    // Set once the workout is finished; the summary then replaces the workout screen.
+    var summary by remember { mutableStateOf<FinishSummary?>(null) }
+    summary?.let {
+        FinishSummaryScreen(it, onDone = onClose)
+        return
+    }
+
     RequestNotificationPermission()
 
     // When an exercise is added, jump to it. -1 means "not loaded yet", so opening the
@@ -100,6 +109,13 @@ fun ActiveWorkoutScreen(
     // Leaving an edited workout by any route saves it, so unticked rows never linger in history.
     val saveEdits = { viewModel.doneEditing { onClose() } }
     BackHandler(enabled = isEditing, onBack = saveEdits)
+
+    // Keep the screen awake during a workout, so the phone doesn't lock between sets.
+    val view = LocalView.current
+    DisposableEffect(isEditing) {
+        view.keepScreenOn = !isEditing
+        onDispose { view.keepScreenOn = false }
+    }
 
     val totalSets = exercises.sumOf { it.sets.size }
     val doneSets = exercises.sumOf { exercise -> exercise.sets.count { it.completed } }
@@ -190,6 +206,7 @@ fun ActiveWorkoutScreen(
                         previousSets = current.previousSets[exercise.workoutExercise.id].orEmpty(),
                         unit = current.unit,
                         target = current.targets[exercise.exercise.id],
+                        isRecord = { set -> current.recordsFor(exercise.exercise.id, set).isNotEmpty() },
                         actions = ExercisePageActions(
                             onMoveEarlier = if (page == 0) null else {
                                 { followId = exercise.workoutExercise.id; viewModel.moveExercise(exercise, -1) }
@@ -259,7 +276,10 @@ fun ActiveWorkoutScreen(
             },
             confirmLabel = "Finish",
             dismissLabel = "Keep going",
-            onConfirm = { confirmFinish = false; viewModel.finish { onClose() } },
+            onConfirm = {
+                confirmFinish = false
+                viewModel.finish { result -> if (result == null) onClose() else summary = result }
+            },
             onDismiss = { confirmFinish = false },
         )
     }

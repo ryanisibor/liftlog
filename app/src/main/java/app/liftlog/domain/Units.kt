@@ -4,9 +4,10 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 
 /** Weights are stored in kg; this only affects how they are shown and entered. */
-enum class WeightUnit(val label: String, val kgPerUnit: Double) {
-    KG("kg", 1.0),
-    LB("lb", 0.45359237),
+/** [step] is the usual smallest plate jump in that unit, used by the quick-adjust buttons. */
+enum class WeightUnit(val label: String, val kgPerUnit: Double, val step: Double) {
+    KG("kg", 1.0, 2.5),
+    LB("lb", 0.45359237, 5.0),
 }
 
 /** Converts a stored kg value to [unit] and formats it with up to two decimals, e.g. "62.5". */
@@ -35,6 +36,17 @@ fun formatSet(weightKg: Double?, reps: Int?, unit: WeightUnit): String = when {
     reps == null -> "–"
     weightKg == null -> "$reps reps"
     else -> "${formatWeight(weightKg, unit)} × $reps"
+}
+
+/**
+ * The weight box's new text after a quick-adjust button adds [delta] (in [unit], may be
+ * negative). Starts from what is typed, else from [fallbackKg] (last time's weight), else
+ * from zero, and never goes below zero.
+ */
+fun stepWeight(text: String, fallbackKg: Double?, delta: Double, unit: WeightUnit): String {
+    val baseKg = parseWeightToKg(text, unit) ?: fallbackKg ?: 0.0
+    val steppedKg = maxOf(0.0, baseKg + delta * unit.kgPerUnit)
+    return formatWeight(steppedKg, unit)
 }
 
 /**

@@ -194,6 +194,16 @@ data class WorkoutMuscles(
     val secondaryMuscles: List<Muscle>,
 )
 
+/** Weight and reps of one earlier set, for working out records. */
+data class PriorSetRow(val weightKg: Double?, val reps: Int?)
+
+/** Working sets done of one exercise in a period, with the muscles it trains. */
+data class MuscleSetRow(
+    val primaryMuscle: Muscle,
+    val secondaryMuscles: List<Muscle>,
+    val sets: Int,
+)
+
 /** An exercise that has been logged at least once, for the Progress list. */
 data class TrainedExercise(
     val exerciseId: Long,

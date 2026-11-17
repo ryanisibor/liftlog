@@ -6,6 +6,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Alignment
 import app.liftlog.ui.components.MuscleDiagramPair
 import androidx.compose.runtime.remember
+import android.database.sqlite.SQLiteConstraintException
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import app.liftlog.data.Equipment
+import app.liftlog.data.Muscle
+import kotlinx.coroutines.launch
 import app.liftlog.domain.LoggedSet
 import app.liftlog.domain.setLabels
 import app.liftlog.domain.sessionStats
@@ -64,11 +75,34 @@ data class ExerciseDetailState(
 )
 
 class ExerciseDetailViewModel(
-    exerciseId: Long,
-    exerciseDao: ExerciseDao,
+    private val exerciseId: Long,
+    private val exerciseDao: ExerciseDao,
     workoutDao: WorkoutDao,
     settings: SettingsRepository,
 ) : ViewModel() {
+    /** Saves changes to a custom exercise. [onResult] gets null on success or a message to show. */
+    fun update(name: String, muscle: Muscle, equipment: Equipment, onResult: (String?) -> Unit) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return onResult("Enter a name")
+        if (trimmed.length > ExercisesViewModel.MAX_NAME_LENGTH) return onResult("Name is too long")
+        viewModelScope.launch {
+            try {
+                exerciseDao.updateCustom(exerciseId, trimmed, muscle, equipment)
+                onResult(null)
+            } catch (_: SQLiteConstraintException) {
+                onResult("An exercise with that name already exists")
+            }
+        }
+    }
+
+    /** Hides the exercise from the library. Workouts that used it keep their history. */
+    fun hide(onDone: () -> Unit) {
+        viewModelScope.launch {
+            exerciseDao.setArchived(exerciseId, true)
+            onDone()
+        }
+    }
+
     val state: StateFlow<ExerciseDetailState> = combine(
         exerciseDao.observe(exerciseId),
         workoutDao.observeExerciseHistory(exerciseId),
@@ -87,6 +121,41 @@ fun ExerciseDetailScreen(exerciseId: Long, onBack: () -> Unit) {
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val exercise = state.exercise
+    var showEdit by rememberSaveable { mutableStateOf(false) }
+    var confirmHide by rememberSaveable { mutableStateOf(false) }
+
+    if (showEdit && exercise != null) {
+        AddExerciseDialog(
+            initialName = exercise.name,
+            onDismiss = { showEdit = false },
+            onAdd = { name, muscle, equipment, onResult ->
+                viewModel.update(name, muscle, equipment) { error ->
+                    if (error == null) showEdit = false
+                    onResult(error)
+                }
+            },
+            title = "Edit exercise",
+            confirmLabel = "Save",
+            initialMuscle = exercise.primaryMuscle,
+            initialEquipment = exercise.equipment,
+        )
+    }
+    if (confirmHide && exercise != null) {
+        AlertDialog(
+            onDismissRequest = { confirmHide = false },
+            title = { Text("Remove ${exercise.name}?") },
+            text = {
+                Text(
+                    "It will disappear from the library and pickers. Workouts you've logged with it keep " +
+                        "their history. Adding an exercise with the same name later brings it back.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmHide = false; viewModel.hide(onBack) }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { confirmHide = false }) { Text("Cancel") } },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -95,6 +164,17 @@ fun ExerciseDetailScreen(exerciseId: Long, onBack: () -> Unit) {
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    // Only exercises the user created can be changed; the built-in library is fixed.
+                    if (exercise?.isCustom == true) {
+                        IconButton(onClick = { showEdit = true }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit exercise")
+                        }
+                        IconButton(onClick = { confirmHide = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Remove exercise from library")
+                        }
                     }
                 },
             )

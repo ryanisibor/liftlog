@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
@@ -50,6 +51,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import app.liftlog.domain.stepWeight
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
@@ -91,6 +94,8 @@ internal fun ExercisePage(
     previousSets: List<SetEntry>,
     unit: WeightUnit,
     target: ProgramDayExercise?,
+    /** Whether a set currently beats a personal record. */
+    isRecord: (SetEntry) -> Boolean,
     actions: ExercisePageActions,
 ) {
     val notes = exercise.exercise.notes
@@ -154,7 +159,7 @@ internal fun ExercisePage(
             ActionChip("Remove", Icons.Default.Delete, actions.onRemove, destructive = true)
         }
 
-        SetTable(exercise, previousSets, unit, actions)
+        SetTable(exercise, previousSets, unit, isRecord, actions)
 
         Text(
             "Tap a set number to mark it as a warm-up · swipe a set left to delete it",
@@ -171,6 +176,7 @@ private fun SetTable(
     exercise: WorkoutExerciseWithSets,
     previousSets: List<SetEntry>,
     unit: WeightUnit,
+    isRecord: (SetEntry) -> Boolean,
     actions: ExercisePageActions,
 ) {
     // Id of the set whose input should take focus, set when the set before it is ticked.
@@ -197,6 +203,7 @@ private fun SetTable(
                         // Warm-ups show as W; working sets are numbered among themselves.
                         label = if (set.isWarmup) "W" else exercise.sets.take(index + 1).count { !it.isWarmup }.toString(),
                         onToggleWarmup = { actions.onToggleWarmup(set) },
+                        isRecord = isRecord(set),
                         set = set,
                         previous = previous,
                         unit = unit,
@@ -260,6 +267,7 @@ private fun HeaderCell(text: String, modifier: Modifier) {
 private fun SetRow(
     label: String,
     onToggleWarmup: () -> Unit,
+    isRecord: Boolean,
     set: SetEntry,
     previous: SetEntry?,
     unit: WeightUnit,
@@ -297,6 +305,9 @@ private fun SetRow(
             value == SwipeToDismissBoxValue.EndToStart
         },
     )
+    var weightFocused by remember { mutableStateOf(false) }
+
+    Column {
     SwipeToDismissBox(
         state = dismissState,
         enableDismissFromStartToEnd = false,
@@ -333,13 +344,34 @@ private fun SetRow(
                     )
                     .padding(vertical = 14.dp),
             )
-            Text(
-                previous?.let { formatSet(it.weightKg, it.reps, unit) } ?: "–",
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
+            if (isRecord) {
+                // A ticked set that beats your best: say so where "last time" would be.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        Icons.Default.Star,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        " Record",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            } else {
+                Text(
+                    previous?.let { formatSet(it.weightKg, it.reps, unit) } ?: "–",
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+            }
             NumberField(
                 value = weightText,
                 onValueChange = { weightText = it; onWeightTyped(it) },
@@ -348,6 +380,7 @@ private fun SetRow(
                 imeAction = ImeAction.Next,
                 maxLength = 7,
                 focusRequester = weightFocus,
+                onFocusChanged = { weightFocused = it },
             )
             NumberField(
                 value = repsText,
@@ -376,6 +409,24 @@ private fun SetRow(
             }
         }
     }
+    // Quick adjust for the weight being edited: saves typing for the usual plate jumps.
+    if (weightFocused) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            modifier = Modifier.fillMaxWidth().padding(end = TICK_COLUMN + 8.dp, bottom = 4.dp),
+        ) {
+            listOf(-2 * unit.step, -unit.step, unit.step, 2 * unit.step).forEach { delta ->
+                AssistChip(
+                    onClick = {
+                        weightText = stepWeight(weightText, previous?.weightKg, delta, unit)
+                        onWeightTyped(weightText)
+                    },
+                    label = { Text((if (delta > 0) "+" else "−") + formatWeight(kotlin.math.abs(delta), WeightUnit.KG)) },
+                )
+            }
+        }
+    }
+    }
 }
 
 @Composable
@@ -387,6 +438,7 @@ private fun NumberField(
     imeAction: ImeAction,
     maxLength: Int,
     focusRequester: FocusRequester,
+    onFocusChanged: (Boolean) -> Unit = {},
 ) {
     OutlinedTextField(
         value = value,
@@ -402,7 +454,11 @@ private fun NumberField(
         singleLine = true,
         textStyle = MaterialTheme.typography.bodyLarge.copy(textAlign = TextAlign.Center),
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
-        modifier = Modifier.width(INPUT_COLUMN).padding(horizontal = 2.dp).focusRequester(focusRequester),
+        modifier = Modifier
+            .width(INPUT_COLUMN)
+            .padding(horizontal = 2.dp)
+            .focusRequester(focusRequester)
+            .onFocusChanged { onFocusChanged(it.isFocused) },
     )
 }
 

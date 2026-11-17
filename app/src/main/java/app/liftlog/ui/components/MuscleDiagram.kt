@@ -13,6 +13,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.semantics.contentDescription
@@ -118,6 +119,8 @@ fun MuscleDiagram(
     secondary: Set<Muscle>,
     view: BodyView,
     modifier: Modifier = Modifier,
+    /** If given, each muscle is shaded by its value from 0 to 1 instead of by primary and secondary. */
+    intensity: Map<Muscle, Float>? = null,
 ) {
     val bodyColor = MaterialTheme.colorScheme.surfaceContainerHighest
     val idleColor = MaterialTheme.colorScheme.outlineVariant
@@ -137,6 +140,10 @@ fun MuscleDiagram(
             body.forEach { draw(it, bodyColor) }
             regions.forEach { (muscle, region) ->
                 val color = when {
+                    intensity != null -> intensity[muscle]?.takeIf { it > 0f }
+                        // Start a little above the idle shade so even one set is visible.
+                        ?.let { lerp(idleColor, primaryColor, 0.25f + 0.75f * it.coerceAtMost(1f)) }
+                        ?: idleColor
                     Muscle.FULL_BODY in primary || muscle in primary -> primaryColor
                     muscle in secondary -> secondaryColor
                     else -> idleColor
@@ -155,6 +162,18 @@ fun MuscleDiagramPair(
     secondary: List<Muscle>,
     modifier: Modifier = Modifier,
 ) = MuscleDiagramPair(setOf(primary), secondary.toSet(), modifier)
+
+/** Front and back figures shaded by how much each muscle was trained, from 0 to 1. */
+@Composable
+fun MuscleHeatPair(intensity: Map<Muscle, Float>, description: String, modifier: Modifier = Modifier) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = modifier.semantics { contentDescription = description },
+    ) {
+        MuscleDiagram(emptySet(), emptySet(), BodyView.FRONT, Modifier.fillMaxHeight(), intensity)
+        MuscleDiagram(emptySet(), emptySet(), BodyView.BACK, Modifier.fillMaxHeight(), intensity)
+    }
+}
 
 /** Front and back figures for several main muscles at once. */
 @Composable

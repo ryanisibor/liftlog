@@ -52,13 +52,18 @@ import app.liftlog.data.Equipment
 import app.liftlog.data.Muscle
 import app.liftlog.data.db.Exercise
 import app.liftlog.data.db.ExerciseDao
+import app.liftlog.data.db.WorkoutDao
 import app.liftlog.ui.appContainer
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class ExercisesViewModel(private val exerciseDao: ExerciseDao) : ViewModel() {
+class ExercisesViewModel(private val exerciseDao: ExerciseDao, workoutDao: WorkoutDao) : ViewModel() {
+    /** Ids of the exercises used most recently, newest first. */
+    val recentIds: StateFlow<List<Long>> = workoutDao.observeRecentExerciseIds(RECENT_COUNT)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val exercises: StateFlow<List<Exercise>> =
         exerciseDao.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -69,9 +74,15 @@ class ExercisesViewModel(private val exerciseDao: ExerciseDao) : ViewModel() {
         if (trimmed.length > MAX_NAME_LENGTH) return onResult("Name is too long")
         viewModelScope.launch {
             try {
-                exerciseDao.insert(
-                    Exercise(name = trimmed, primaryMuscle = muscle, equipment = equipment, isCustom = true),
-                )
+                // Re-adding an exercise that was hidden brings it back, with its history.
+                val hidden = exerciseDao.findByName(trimmed)?.takeIf { it.archived }
+                if (hidden != null) {
+                    exerciseDao.setArchived(hidden.id, false)
+                } else {
+                    exerciseDao.insert(
+                        Exercise(name = trimmed, primaryMuscle = muscle, equipment = equipment, isCustom = true),
+                    )
+                }
                 onResult(null)
             } catch (_: SQLiteConstraintException) {
                 onResult("An exercise with that name already exists")
@@ -79,8 +90,9 @@ class ExercisesViewModel(private val exerciseDao: ExerciseDao) : ViewModel() {
         }
     }
 
-    private companion object {
+    companion object {
         const val MAX_NAME_LENGTH = 60
+        private const val RECENT_COUNT = 8
     }
 }
 
@@ -96,7 +108,8 @@ fun ExercisesScreen(
     onBack: (() -> Unit)? = null,
 ) {
     val container = appContainer()
-    val viewModel = viewModel { ExercisesViewModel(container.exerciseDao) }
+    val viewModel = viewModel { ExercisesViewModel(container.exerciseDao, container.workoutDao) }
+    val recentIds by viewModel.recentIds.collectAsStateWithLifecycle()
     val exercises by viewModel.exercises.collectAsStateWithLifecycle()
 
     var query by rememberSaveable { mutableStateOf("") }
@@ -173,16 +186,15 @@ fun ExercisesScreen(
                         )
                     }
                 }
-                items(filtered, key = { it.id }) { exercise ->
-                    ListItem(
-                        headlineContent = { Text(exercise.name) },
-                        supportingContent = {
-                            val custom = if (exercise.isCustom) " · Custom" else ""
-                            Text("${exercise.primaryMuscle.label} · ${exercise.equipment.label}$custom")
-                        },
-                        modifier = Modifier.clickable { onExerciseClick(exercise) },
-                    )
+                // With no search or filter, lead with what was used lately: it is usually what's wanted.
+                val unfiltered = query.isBlank() && muscle == null && equipment == null
+                val recent = if (unfiltered) recentIds.mapNotNull { id -> exercises.find { it.id == id } } else emptyList()
+                if (recent.isNotEmpty()) {
+                    item(key = "recent-header") { ListHeader("Recently used") }
+                    items(recent, key = { "recent-${it.id}" }) { exercise -> ExerciseRow(exercise, onExerciseClick) }
+                    item(key = "all-header") { ListHeader("All exercises") }
                 }
+                items(filtered, key = { it.id }) { exercise -> ExerciseRow(exercise, onExerciseClick) }
             }
         }
     }
@@ -225,19 +237,46 @@ private fun <T> ChipRow(
 }
 
 @Composable
-private fun AddExerciseDialog(
+private fun ListHeader(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
+private fun ExerciseRow(exercise: Exercise, onClick: (Exercise) -> Unit) {
+    ListItem(
+        headlineContent = { Text(exercise.name) },
+        supportingContent = {
+            val custom = if (exercise.isCustom) " · Custom" else ""
+            Text("${exercise.primaryMuscle.label} · ${exercise.equipment.label}$custom")
+        },
+        modifier = Modifier.clickable { onClick(exercise) },
+    )
+}
+
+/** Name, main muscle and equipment for a custom exercise; used to add one and to edit one. */
+@Composable
+internal fun AddExerciseDialog(
     initialName: String,
     onDismiss: () -> Unit,
     onAdd: (String, Muscle, Equipment, (String?) -> Unit) -> Unit,
+    title: String = "Add custom exercise",
+    confirmLabel: String = "Add",
+    initialMuscle: Muscle = Muscle.CHEST,
+    initialEquipment: Equipment = Equipment.BARBELL,
 ) {
     var name by rememberSaveable { mutableStateOf(initialName) }
-    var muscle by rememberSaveable { mutableStateOf(Muscle.CHEST) }
-    var equipment by rememberSaveable { mutableStateOf(Equipment.BARBELL) }
+    var muscle by rememberSaveable { mutableStateOf(initialMuscle) }
+    var equipment by rememberSaveable { mutableStateOf(initialEquipment) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add custom exercise") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -253,7 +292,7 @@ private fun AddExerciseDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onAdd(name, muscle, equipment) { error = it } }) { Text("Add") }
+            TextButton(onClick = { onAdd(name, muscle, equipment) { error = it } }) { Text(confirmLabel) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )

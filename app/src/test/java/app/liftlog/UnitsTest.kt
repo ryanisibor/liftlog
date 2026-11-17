@@ -6,6 +6,7 @@ import app.liftlog.domain.formatWeight
 import app.liftlog.domain.parseReps
 import app.liftlog.domain.parseWeightToKg
 import app.liftlog.domain.setLabels
+import app.liftlog.domain.stepWeight
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -62,6 +63,15 @@ class UnitsTest {
         assertEquals(listOf("W", "W", "1", "2", "3"), setLabels(listOf(true, true, false, false, false)))
         assertEquals(listOf("1", "W", "2"), setLabels(listOf(false, true, false)))
         assertEquals(emptyList<String>(), setLabels(emptyList()))
+    }
+
+    @Test
+    fun `quick-adjust steps from the typed value, then last time, then zero`() {
+        assertEquals("62.5", stepWeight("60", null, 2.5, WeightUnit.KG))
+        assertEquals("82.5", stepWeight("", 80.0, 2.5, WeightUnit.KG))
+        assertEquals("2.5", stepWeight("", null, 2.5, WeightUnit.KG))
+        assertEquals("0", stepWeight("2.5", null, -5.0, WeightUnit.KG))
+        assertEquals("140", stepWeight("135", null, 5.0, WeightUnit.LB))
     }
 
     @Test

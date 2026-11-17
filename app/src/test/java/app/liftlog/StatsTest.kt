@@ -1,6 +1,11 @@
 package app.liftlog
 
 import app.liftlog.domain.LoggedSet
+import app.liftlog.domain.MuscleSets
+import app.liftlog.domain.RecordKind
+import app.liftlog.domain.priorBest
+import app.liftlog.domain.recordKinds
+import app.liftlog.domain.setsPerMuscle
 import app.liftlog.domain.WorkoutTotals
 import app.liftlog.domain.monthStats
 import app.liftlog.domain.estimateOneRepMax
@@ -87,6 +92,37 @@ class StatsTest {
         assertEquals(0.0, stats.perWeek, 1e-9)
         assertEquals(0L, stats.averageSeconds)
         assertEquals(0.0, stats.averageVolumeKg, 1e-9)
+    }
+
+    @Test
+    fun `sets per muscle credit secondary muscles at half and sort largest first`() {
+        val totals = setsPerMuscle(
+            listOf(
+                MuscleSets("chest", listOf("triceps", "shoulders"), 4),
+                MuscleSets("triceps", emptyList(), 3),
+                MuscleSets("shoulders", listOf("triceps"), 2),
+            ),
+        )
+        assertEquals(listOf("triceps" to 6.0, "chest" to 4.0, "shoulders" to 4.0), totals)
+    }
+
+    @Test
+    fun `a set is a record only when it beats earlier bests`() {
+        val prior = priorBest(listOf(LoggedSet(80.0, 6), LoggedSet(85.0, 3), LoggedSet(null, 20)))!!
+        assertEquals(85.0, prior.maxWeightKg, 1e-9)
+        assertEquals(96.0, prior.bestOneRepMaxKg!!, 1e-9)
+
+        assertEquals(setOf(RecordKind.WEIGHT), recordKinds(87.5, 1, prior))
+        assertEquals(setOf(RecordKind.ONE_REP_MAX), recordKinds(82.5, 6, prior))
+        assertEquals(setOf(RecordKind.WEIGHT, RecordKind.ONE_REP_MAX), recordKinds(90.0, 5, prior))
+        assertEquals(emptySet<RecordKind>(), recordKinds(85.0, 3, prior))
+        assertEquals(emptySet<RecordKind>(), recordKinds(null, 30, prior))
+    }
+
+    @Test
+    fun `a first session has nothing to beat`() {
+        assertNull(priorBest(listOf(LoggedSet(null, 12))))
+        assertEquals(emptySet<RecordKind>(), recordKinds(100.0, 5, null))
     }
 
     @Test

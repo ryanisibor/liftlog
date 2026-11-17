@@ -9,7 +9,12 @@ import app.liftlog.data.db.SetEntry
 import app.liftlog.data.db.Workout
 import app.liftlog.data.db.WorkoutDao
 import app.liftlog.data.db.WorkoutExerciseWithSets
+import app.liftlog.domain.LoggedSet
+import app.liftlog.domain.PriorBest
+import app.liftlog.domain.RecordKind
 import app.liftlog.domain.WeightUnit
+import app.liftlog.domain.priorBest
+import app.liftlog.domain.recordKinds
 import app.liftlog.domain.parseReps
 import app.liftlog.domain.parseWeightToKg
 import app.liftlog.timer.RestTimer
@@ -25,6 +30,20 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** One exercise's record from the workout just finished. */
+data class RecordLine(val exercise: String, val weightKg: Double, val reps: Int, val kinds: Set<RecordKind>)
+
+/** What the "workout complete" screen shows. Sets and volume exclude warm-ups. */
+data class FinishSummary(
+    val dayName: String?,
+    val durationSeconds: Long,
+    val exerciseCount: Int,
+    val setCount: Int,
+    val volumeKg: Double,
+    val records: List<RecordLine>,
+    val unit: WeightUnit,
+)
+
 data class WorkoutState(
     val workout: Workout,
     val exercises: List<WorkoutExerciseWithSets>,
@@ -34,9 +53,15 @@ data class WorkoutState(
     val restSeconds: Int,
     /** Target sets and rep range from the program, keyed by exercise id; empty for ad-hoc workouts. */
     val targets: Map<Long, ProgramDayExercise> = emptyMap(),
+    /** Best weight and estimated 1RM before this workout, keyed by exercise id. */
+    val priorBests: Map<Long, PriorBest> = emptyMap(),
 ) {
     /** True when this is a finished workout opened for correction, not one in progress. */
     val isEditing: Boolean get() = workout.finishedAt != null
+
+    /** Records beaten by a ticked working set; empty for warm-ups, unticked sets and first sessions. */
+    fun recordsFor(exerciseId: Long, set: SetEntry): Set<RecordKind> =
+        if (!set.completed || set.isWarmup) emptySet() else recordKinds(set.weightKg, set.reps, priorBests[exerciseId])
 
     /** The rest to take after a set of this exercise: the program's, or the default. */
     fun restSecondsFor(exerciseId: Long): Int = targets[exerciseId]?.restSeconds ?: restSeconds
@@ -76,6 +101,16 @@ class ActiveWorkoutViewModel(
         .flatMapLatest { dayId -> if (dayId == null) flowOf(emptyList()) else workoutDao.observeDayTargets(dayId) }
         .map { list -> list.associateBy { it.exerciseId } }
 
+    // Bests before this workout, by exercise id, for flagging records as sets are ticked.
+    private val priorBests = exercises
+        .map { list -> list.map { it.exercise.id }.distinct() }
+        .distinctUntilChanged()
+        .mapLatest { ids ->
+            ids.mapNotNull { id ->
+                priorBest(workoutDao.priorSets(id, workoutId).map { LoggedSet(it.weightKg, it.reps) })?.let { id to it }
+            }.toMap()
+        }
+
     /** Null while loading, and again once the workout has been finished or discarded. */
     val state: StateFlow<WorkoutState?> = combine(
         combine(
@@ -88,7 +123,8 @@ class ActiveWorkoutViewModel(
             workout?.let { WorkoutState(it, exerciseList, previous, unit, restSeconds) }
         },
         targets,
-    ) { state, targetMap -> state?.copy(targets = targetMap) }
+        priorBests,
+    ) { state, targetMap, bests -> state?.copy(targets = targetMap, priorBests = bests) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val restEndsAt: StateFlow<Long?> = restTimer.endsAt
@@ -203,14 +239,38 @@ class ActiveWorkoutViewModel(
 
     fun skipRest() = restTimer.cancel()
 
-    /** [onDone] receives false if nothing was completed and the workout was thrown away. */
-    fun finish(onDone: (saved: Boolean) -> Unit) {
+    /** [onDone] receives a summary to show, or null if nothing was completed and the workout was thrown away. */
+    fun finish(onDone: (FinishSummary?) -> Unit) {
         viewModelScope.launch {
             restTimer.cancel()
-            val saved = workoutDao.finishWorkout(workoutId, System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            // Built before saving: afterwards this screen's state describes a finished workout.
+            val summary = state.value?.let { summarise(it, dayName.value, now) }
+            val saved = workoutDao.finishWorkout(workoutId, now)
             if (saved) onHistoryChanged()
-            onDone(saved)
+            onDone(summary.takeIf { saved })
         }
+    }
+
+    private fun summarise(current: WorkoutState, dayName: String?, now: Long): FinishSummary {
+        val done = current.exercises.map { exercise -> exercise to exercise.sets.filter { it.completed } }
+            .filter { it.second.isNotEmpty() }
+        val working = done.flatMap { it.second }.filter { !it.isWarmup }
+        val records = done.mapNotNull { (exercise, sets) ->
+            // One line per exercise: its heaviest record-setting set.
+            val best = sets.filter { current.recordsFor(exercise.exercise.id, it).isNotEmpty() }
+                .maxByOrNull { it.weightKg ?: 0.0 } ?: return@mapNotNull null
+            RecordLine(exercise.exercise.name, best.weightKg ?: 0.0, best.reps ?: 0, current.recordsFor(exercise.exercise.id, best))
+        }
+        return FinishSummary(
+            dayName = dayName,
+            durationSeconds = (now - current.workout.startedAt) / 1000,
+            exerciseCount = done.size,
+            setCount = working.size,
+            volumeKg = working.sumOf { (it.weightKg ?: 0.0) * (it.reps ?: 0) },
+            records = records,
+            unit = current.unit,
+        )
     }
 
     fun discard(onDone: () -> Unit) {
