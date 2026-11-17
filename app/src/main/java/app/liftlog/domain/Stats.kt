@@ -96,4 +96,34 @@ fun weeklyCounts(startTimes: List<Long>, weeks: Int, today: LocalDate, zone: Zon
     return counts.mapIndexed { index, count -> WeekCount(firstWeek.plusWeeks(index.toLong()), count) }
 }
 
+/** One finished workout, reduced to what the month totals need. */
+data class WorkoutTotals(val durationSeconds: Long, val volumeKg: Double)
+
+data class MonthStats(
+    val workouts: Int,
+    val perWeek: Double,
+    val totalSeconds: Long,
+    val averageSeconds: Long,
+    val totalVolumeKg: Double,
+    val averageVolumeKg: Double,
+)
+
+/**
+ * Totals and averages for a month. [daysCounted] is how much of the month has happened so
+ * far (all of it for a past month), so a month in progress is not averaged over days to come.
+ */
+fun monthStats(workouts: List<WorkoutTotals>, daysCounted: Int): MonthStats {
+    val count = workouts.size
+    val seconds = workouts.sumOf { it.durationSeconds }
+    val volume = workouts.sumOf { it.volumeKg }
+    return MonthStats(
+        workouts = count,
+        perWeek = if (daysCounted <= 0) 0.0 else count * 7.0 / daysCounted,
+        totalSeconds = seconds,
+        averageSeconds = if (count == 0) 0 else seconds / count,
+        totalVolumeKg = volume,
+        averageVolumeKg = if (count == 0) 0.0 else volume / count,
+    )
+}
+
 private const val MAX_REPS_FOR_ESTIMATE = 12

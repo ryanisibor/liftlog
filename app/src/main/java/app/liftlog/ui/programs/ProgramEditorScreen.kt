@@ -40,6 +40,7 @@ import app.liftlog.data.db.DayWithExercises
 import app.liftlog.data.db.Program
 import app.liftlog.data.db.ProgramDao
 import app.liftlog.data.db.ProgramDay
+import app.liftlog.ui.countOf
 import app.liftlog.ui.appContainer
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -132,7 +133,7 @@ fun ProgramEditorScreen(programId: Long, onOpenDay: (Long) -> Unit, onBack: () -
                             Text("Day ${index + 1}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                             Text(day.day.name, style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "${day.items.size} exercises · ${day.totalSets} sets",
+                                "${countOf(day.items.size, "exercise")} · ${countOf(day.totalSets, "set")}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

@@ -62,6 +62,10 @@ interface WorkoutDao {
     @Query("SELECT d.name FROM workout w JOIN program_day d ON d.id = w.programDayId WHERE w.id = :workoutId")
     fun observeWorkoutDayName(workoutId: Long): Flow<String?>
 
+    /** Moves a finished workout to another date and time; used when it was logged late. */
+    @Query("UPDATE workout SET startedAt = :startedAt, finishedAt = :finishedAt WHERE id = :id AND finishedAt IS NOT NULL")
+    suspend fun setWorkoutTimes(id: Long, startedAt: Long, finishedAt: Long)
+
     @Query("UPDATE workout SET finishedAt = :finishedAt WHERE id = :id")
     suspend fun setFinishedAt(id: Long, finishedAt: Long)
 
@@ -146,6 +150,35 @@ interface WorkoutDao {
         """,
     )
     fun observeExerciseHistory(exerciseId: Long): Flow<List<ExerciseHistoryRow>>
+
+    /** Finished workouts that started in [from, until), newest first, for the calendar. */
+    @Query(
+        """
+        SELECT w.id, w.startedAt, w.finishedAt, d.name AS dayName,
+            (SELECT COUNT(*) FROM set_entry s
+                JOIN workout_exercise we ON s.workoutExerciseId = we.id
+                WHERE we.workoutId = w.id AND s.completed = 1 AND s.isWarmup = 0) AS setCount,
+            (SELECT COALESCE(SUM(s.weightKg * s.reps), 0) FROM set_entry s
+                JOIN workout_exercise we ON s.workoutExerciseId = we.id
+                WHERE we.workoutId = w.id AND s.completed = 1 AND s.isWarmup = 0) AS volumeKg
+        FROM workout w
+        LEFT JOIN program_day d ON d.id = w.programDayId
+        WHERE w.finishedAt IS NOT NULL AND w.startedAt >= :from AND w.startedAt < :until
+        ORDER BY w.startedAt DESC
+        """,
+    )
+    fun observeWorkoutsBetween(from: Long, until: Long): Flow<List<CalendarWorkout>>
+
+    @Query(
+        """
+        SELECT we.workoutId AS workoutId, e.primaryMuscle AS primaryMuscle, e.secondaryMuscles AS secondaryMuscles
+        FROM workout_exercise we
+        JOIN workout w ON w.id = we.workoutId
+        JOIN exercise e ON e.id = we.exerciseId
+        WHERE w.finishedAt IS NOT NULL AND w.startedAt >= :from AND w.startedAt < :until
+        """,
+    )
+    fun observeWorkoutMusclesBetween(from: Long, until: Long): Flow<List<WorkoutMuscles>>
 
     /** Every exercise with at least one completed set in a finished workout, most recent first. */
     @Query(

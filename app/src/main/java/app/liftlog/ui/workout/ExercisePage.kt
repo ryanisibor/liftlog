@@ -63,6 +63,7 @@ import app.liftlog.data.db.WorkoutExerciseWithSets
 import app.liftlog.domain.WeightUnit
 import app.liftlog.domain.formatSet
 import app.liftlog.domain.formatWeight
+import app.liftlog.ui.countOf
 import app.liftlog.ui.components.MuscleDiagramPair
 
 /** Everything the page for one exercise can ask the screen to do. */
@@ -119,7 +120,7 @@ internal fun ExercisePage(
             if (target != null) {
                 val reps = if (target.repMin == target.repMax) "${target.repMin}" else "${target.repMin}–${target.repMax}"
                 Text(
-                    "Target: ${target.targetSets} sets of $reps reps",
+                    "Target: ${countOf(target.targetSets, "set")} of $reps reps",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(top = 2.dp),

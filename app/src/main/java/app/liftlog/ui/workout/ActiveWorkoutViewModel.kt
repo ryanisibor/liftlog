@@ -176,6 +176,19 @@ class ActiveWorkoutViewModel(
      * Saves edits to an already finished workout: unticked sets are dropped, as on finishing.
      * [onDone] receives false if nothing was left and the workout was deleted.
      */
+    /**
+     * Moves a finished workout to a new start time, keeping its duration. A time in the
+     * future is pulled back to now.
+     */
+    fun changeStart(newStartedAt: Long) {
+        val workout = state.value?.workout ?: return
+        val finishedAt = workout.finishedAt ?: return
+        val start = minOf(newStartedAt, System.currentTimeMillis())
+        viewModelScope.launch {
+            workoutDao.setWorkoutTimes(workoutId, start, start + (finishedAt - workout.startedAt))
+        }
+    }
+
     fun doneEditing(onDone: (kept: Boolean) -> Unit) {
         viewModelScope.launch { onDone(workoutDao.pruneWorkout(workoutId)) }
     }

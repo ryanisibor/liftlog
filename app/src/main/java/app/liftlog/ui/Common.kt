@@ -11,6 +11,9 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun appContainer(): AppContainer = (LocalContext.current.applicationContext as LiftLogApplication).container
 
+/** "1 set", "3 sets": a count with its noun, pluralised by adding an s. */
+fun countOf(count: Int, singular: String): String = if (count == 1) "1 $singular" else "$count ${singular}s"
+
 private val dateTimeFormat = DateTimeFormatter.ofPattern("EEE d MMM yyyy, HH:mm")
 private val dateFormat = DateTimeFormatter.ofPattern("EEE d MMM yyyy")
 

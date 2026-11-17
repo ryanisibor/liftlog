@@ -36,7 +36,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import app.liftlog.ui.exercises.ExerciseDetailScreen
 import app.liftlog.ui.exercises.ExercisesScreen
-import app.liftlog.ui.home.HistoryScreen
+import app.liftlog.ui.home.CalendarScreen
 import app.liftlog.ui.home.HomeNavigation
 import app.liftlog.ui.home.HomeScreen
 import app.liftlog.ui.programs.DayEditorScreen
@@ -115,7 +115,7 @@ fun LiftLogApp() {
                 )
             }
             composable(ROUTE_HISTORY) {
-                HistoryScreen(
+                CalendarScreen(
                     onOpenWorkout = { navController.navigate("history/$it") },
                     onBack = { navController.popBackStack() },
                 )

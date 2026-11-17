@@ -8,7 +8,6 @@ import app.liftlog.data.db.Program
 import app.liftlog.data.db.ProgramDao
 import app.liftlog.data.db.Workout
 import app.liftlog.data.db.WorkoutDao
-import app.liftlog.data.db.WorkoutSummary
 import app.liftlog.domain.WeightUnit
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -83,9 +82,6 @@ class HomeViewModel(
         settings.weightUnit,
     ) { plan, active, unit -> HomeState(loaded = true, plan = plan, activeWorkout = active, unit = unit) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState())
-
-    val history: StateFlow<List<WorkoutSummary>> =
-        workoutDao.observeFinishedWorkouts().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Opens the in-progress workout if there is one, otherwise starts an empty one. */
     fun startEmptyOrResume(onReady: (Long) -> Unit) {

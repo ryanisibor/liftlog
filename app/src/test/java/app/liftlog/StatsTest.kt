@@ -1,6 +1,8 @@
 package app.liftlog
 
 import app.liftlog.domain.LoggedSet
+import app.liftlog.domain.WorkoutTotals
+import app.liftlog.domain.monthStats
 import app.liftlog.domain.estimateOneRepMax
 import app.liftlog.domain.personalRecords
 import app.liftlog.domain.sessionStats
@@ -62,6 +64,29 @@ class StatsTest {
         assertEquals(12.0, records.mostReps!!.value, 1e-9)
         // 80 x 6 estimates to 96, higher than 85 x 3 at 93.5, so the 1RM record stays with the first session.
         assertEquals(100L, records.bestOneRepMax!!.achievedAt)
+    }
+
+    @Test
+    fun `month stats total and average the workouts`() {
+        val stats = monthStats(
+            workouts = listOf(WorkoutTotals(3600, 10_000.0), WorkoutTotals(5400, 14_000.0)),
+            daysCounted = 28,
+        )
+        assertEquals(2, stats.workouts)
+        assertEquals(0.5, stats.perWeek, 1e-9)
+        assertEquals(9000L, stats.totalSeconds)
+        assertEquals(4500L, stats.averageSeconds)
+        assertEquals(24_000.0, stats.totalVolumeKg, 1e-9)
+        assertEquals(12_000.0, stats.averageVolumeKg, 1e-9)
+    }
+
+    @Test
+    fun `an empty month has zero averages rather than dividing by zero`() {
+        val stats = monthStats(emptyList(), daysCounted = 0)
+        assertEquals(0, stats.workouts)
+        assertEquals(0.0, stats.perWeek, 1e-9)
+        assertEquals(0L, stats.averageSeconds)
+        assertEquals(0.0, stats.averageVolumeKg, 1e-9)
     }
 
     @Test

@@ -177,6 +177,23 @@ data class WorkoutSummary(
     val dayName: String?,
 )
 
+/** A finished workout as the calendar shows it. Volume and sets exclude warm-ups. */
+data class CalendarWorkout(
+    val id: Long,
+    val startedAt: Long,
+    val finishedAt: Long,
+    val dayName: String?,
+    val setCount: Int,
+    val volumeKg: Double,
+)
+
+/** The muscles one exercise of a workout trains, for the calendar's diagrams. */
+data class WorkoutMuscles(
+    val workoutId: Long,
+    val primaryMuscle: Muscle,
+    val secondaryMuscles: List<Muscle>,
+)
+
 /** An exercise that has been logged at least once, for the Progress list. */
 data class TrainedExercise(
     val exerciseId: Long,

@@ -27,6 +27,7 @@ import app.liftlog.data.db.DayExerciseWithExercise
 import app.liftlog.data.db.DayWithExercises
 import app.liftlog.domain.WeightUnit
 import app.liftlog.domain.formatWeight
+import app.liftlog.ui.countOf
 import app.liftlog.ui.components.MuscleDiagram
 import app.liftlog.ui.components.MuscleDiagramPair
 import app.liftlog.ui.components.bestViewFor
@@ -62,7 +63,7 @@ internal fun PlanDayPage(
                         }
                         Text(day.day.name, style = MaterialTheme.typography.headlineMedium)
                         Text(
-                            "${items.size} exercises · ${day.totalSets} sets",
+                            "${countOf(items.size, "exercise")} · ${countOf(day.totalSets, "set")}",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -135,7 +136,7 @@ private fun PlanExerciseRow(item: DayExerciseWithExercise, lastWeightKg: Double?
                 val reps = if (item.item.repMin == item.item.repMax) "${item.item.repMin}" else "${item.item.repMin}–${item.item.repMax}"
                 val weight = lastWeightKg?.let { " · ${formatWeight(it, unit)} ${unit.label}" } ?: ""
                 Text(
-                    "${item.item.targetSets} sets · $reps reps$weight",
+                    "${countOf(item.item.targetSets, "set")} · $reps reps$weight",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 2.dp),
                 )

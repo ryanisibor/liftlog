@@ -168,6 +168,7 @@ fun ActiveWorkoutScreen(
             return@Scaffold
         }
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (isEditing) WorkoutDateRow(current.workout.startedAt, onChange = viewModel::changeStart)
             ExerciseStrip(
                 exercises = exercises,
                 selectedIndex = pagerState.currentPage,
