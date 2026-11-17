@@ -38,6 +38,7 @@ class Converters {
 abstract class AppDatabase : RoomDatabase() {
     abstract fun exerciseDao(): ExerciseDao
     abstract fun workoutDao(): WorkoutDao
+    abstract fun backupDao(): BackupDao
 
     companion object {
         fun create(context: Context): AppDatabase =

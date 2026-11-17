@@ -8,7 +8,9 @@ import androidx.room.PrimaryKey
 import androidx.room.Relation
 import app.liftlog.data.Equipment
 import app.liftlog.data.Muscle
+import kotlinx.serialization.Serializable
 
+@Serializable
 @Entity(tableName = "exercise", indices = [Index(value = ["name"], unique = true)])
 data class Exercise(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -20,6 +22,7 @@ data class Exercise(
     val archived: Boolean = false,
 )
 
+@Serializable
 @Entity(tableName = "program")
 data class Program(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -27,6 +30,7 @@ data class Program(
     val isActive: Boolean = false,
 )
 
+@Serializable
 @Entity(
     tableName = "program_day",
     foreignKeys = [
@@ -46,6 +50,7 @@ data class ProgramDay(
     val name: String,
 )
 
+@Serializable
 @Entity(
     tableName = "program_day_exercise",
     foreignKeys = [
@@ -76,6 +81,7 @@ data class ProgramDayExercise(
 )
 
 /** [programDayId] is null for an ad-hoc session. [finishedAt] is null while in progress. */
+@Serializable
 @Entity(
     tableName = "workout",
     foreignKeys = [
@@ -96,6 +102,7 @@ data class Workout(
     val notes: String = "",
 )
 
+@Serializable
 @Entity(
     tableName = "workout_exercise",
     foreignKeys = [
@@ -123,6 +130,7 @@ data class WorkoutExercise(
 )
 
 /** Weight is always stored in kg. Null weight means bodyweight or not yet entered. */
+@Serializable
 @Entity(
     tableName = "set_entry",
     foreignKeys = [
