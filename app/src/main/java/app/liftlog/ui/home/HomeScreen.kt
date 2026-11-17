@@ -30,6 +30,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -115,12 +116,17 @@ private fun PlanPager(plan: PlanState, state: HomeState, onStart: (Long) -> Unit
     val dayCount by rememberUpdatedState(plan.days.size)
     val pagerState = rememberPagerState { dayCount }
 
-    // Open on the workout that is due, once; after that the user's own swiping wins.
-    var positioned by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(plan.nextDayIndex, positioned) {
-        if (!positioned) {
-            pagerState.scrollToPage(plan.nextDayIndex)
-            positioned = true
+    // Show the workout that is due: when the screen first opens, and again whenever the
+    // due day changes because a workout was finished. In between, the user's swiping wins.
+    var shownNextIndex by rememberSaveable { mutableIntStateOf(-1) }
+    LaunchedEffect(plan.nextDayIndex) {
+        if (shownNextIndex != plan.nextDayIndex) {
+            if (shownNextIndex == -1) {
+                pagerState.scrollToPage(plan.nextDayIndex)
+            } else {
+                pagerState.animateScrollToPage(plan.nextDayIndex)
+            }
+            shownNextIndex = plan.nextDayIndex
         }
     }
 

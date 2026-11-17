@@ -81,6 +81,17 @@ fun ActiveWorkoutScreen(
         knownCount = exercises.size
     }
 
+    // After a reorder, stay on the exercise that was moved. The scroll waits for the new
+    // order to arrive from the database; scrolling earlier would land on its neighbour.
+    var followId by remember { mutableStateOf<Long?>(null) }
+    val order = exercises.map { it.workoutExercise.id }
+    LaunchedEffect(order) {
+        val target = followId ?: return@LaunchedEffect
+        val index = order.indexOf(target)
+        if (index >= 0) pagerState.scrollToPage(index)
+        followId = null
+    }
+
     val totalSets = exercises.sumOf { it.sets.size }
     val doneSets = exercises.sumOf { exercise -> exercise.sets.count { it.completed } }
 
@@ -153,10 +164,10 @@ fun ActiveWorkoutScreen(
                         target = current.targets[exercise.exercise.id],
                         actions = ExercisePageActions(
                             onMoveEarlier = if (page == 0) null else {
-                                { viewModel.moveExercise(exercise, -1); scope.launch { pagerState.scrollToPage(page - 1) } }
+                                { followId = exercise.workoutExercise.id; viewModel.moveExercise(exercise, -1) }
                             },
                             onMoveLater = if (page == exercises.lastIndex) null else {
-                                { viewModel.moveExercise(exercise, 1); scope.launch { pagerState.scrollToPage(page + 1) } }
+                                { followId = exercise.workoutExercise.id; viewModel.moveExercise(exercise, 1) }
                             },
                             onWeightTyped = { setId, text -> viewModel.onWeightTyped(setId, text, current.unit) },
                             onRepsTyped = viewModel::onRepsTyped,
