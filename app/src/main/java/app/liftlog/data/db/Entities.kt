@@ -172,6 +172,15 @@ data class WorkoutSummary(
     val setCount: Int,
 )
 
+/** An exercise that has been logged at least once, for the Progress list. */
+data class TrainedExercise(
+    val exerciseId: Long,
+    val name: String,
+    val lastTrainedAt: Long,
+    val sessionCount: Int,
+    val maxWeightKg: Double?,
+)
+
 /** One completed set of an exercise, with the session it belongs to. */
 data class ExerciseHistoryRow(
     val workoutId: Long,

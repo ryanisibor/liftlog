@@ -132,6 +132,30 @@ interface WorkoutDao {
     )
     fun observeExerciseHistory(exerciseId: Long): Flow<List<ExerciseHistoryRow>>
 
+    /** Every exercise with at least one completed set in a finished workout, most recent first. */
+    @Query(
+        """
+        SELECT e.id AS exerciseId, e.name AS name,
+            MAX(w.startedAt) AS lastTrainedAt,
+            COUNT(DISTINCT w.id) AS sessionCount,
+            MAX(s.weightKg) AS maxWeightKg
+        FROM set_entry s
+        JOIN workout_exercise we ON s.workoutExerciseId = we.id
+        JOIN workout w ON w.id = we.workoutId
+        JOIN exercise e ON e.id = we.exerciseId
+        WHERE s.completed = 1 AND w.finishedAt IS NOT NULL
+        GROUP BY e.id
+        ORDER BY lastTrainedAt DESC
+        """,
+    )
+    fun observeTrainedExercises(): Flow<List<TrainedExercise>>
+
+    @Query("SELECT startedAt FROM workout WHERE finishedAt IS NOT NULL AND startedAt >= :since")
+    fun observeFinishedStartTimes(since: Long): Flow<List<Long>>
+
+    @Query("SELECT COUNT(*) FROM workout WHERE finishedAt IS NOT NULL")
+    fun observeFinishedWorkoutCount(): Flow<Int>
+
     // --- finishing ---
 
     @Query(

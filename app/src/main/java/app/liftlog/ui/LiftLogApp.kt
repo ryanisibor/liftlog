@@ -43,6 +43,7 @@ import app.liftlog.ui.programs.DayEditorScreen
 import app.liftlog.ui.programs.DayEditorViewModel
 import app.liftlog.ui.programs.ProgramEditorScreen
 import app.liftlog.ui.programs.ProgramsScreen
+import app.liftlog.ui.progress.ProgressScreen
 import app.liftlog.ui.settings.SettingsScreen
 import app.liftlog.ui.workout.ActiveWorkoutScreen
 import app.liftlog.ui.workout.ActiveWorkoutViewModel
@@ -157,7 +158,9 @@ fun LiftLogApp() {
                     onExerciseClick = { navController.navigate("exercises/${it.id}") },
                 )
             }
-            composable(TopLevelDestination.Progress.route) { ComingSoonScreen("Progress") }
+            composable(TopLevelDestination.Progress.route) {
+                ProgressScreen(onOpenExercise = { navController.navigate("exercises/$it") })
+            }
             composable(TopLevelDestination.Settings.route) { SettingsScreen() }
 
             composable(ROUTE_ACTIVE_WORKOUT, arguments = idArgument) { entry ->
@@ -238,12 +241,5 @@ private fun NavHostController.navigateToTopLevel(destination: TopLevelDestinatio
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
         restoreState = true
-    }
-}
-
-@Composable
-private fun ComingSoonScreen(title: String) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("$title: coming in a later milestone", style = MaterialTheme.typography.bodyLarge)
     }
 }

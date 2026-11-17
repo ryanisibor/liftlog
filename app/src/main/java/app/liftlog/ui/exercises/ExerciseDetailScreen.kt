@@ -1,10 +1,14 @@
 package app.liftlog.ui.exercises
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Alignment
 import app.liftlog.ui.components.MuscleDiagramPair
+import androidx.compose.runtime.remember
+import app.liftlog.domain.LoggedSet
+import app.liftlog.domain.sessionStats
+import app.liftlog.ui.progress.ExerciseProgressSection
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -102,21 +106,38 @@ fun ExerciseDetailScreen(exerciseId: Long, onBack: () -> Unit) {
         ) {
             if (exercise != null) {
                 item {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+                    // Details on the left, muscle map on the right, as on the workout screen,
+                    // so the chart below starts near the top of the page.
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+                            Text("Main muscle: ${exercise.primaryMuscle.label}")
+                            if (exercise.secondaryMuscles.isNotEmpty()) {
+                                Text("Also works: ${exercise.secondaryMuscles.joinToString { it.label }}")
+                            }
+                            Text("Equipment: ${exercise.equipment.label}")
+                        }
                         MuscleDiagramPair(
                             exercise.primaryMuscle,
                             exercise.secondaryMuscles,
-                            Modifier.height(190.dp),
+                            Modifier.height(112.dp),
                         )
                     }
                 }
+            }
+            if (state.sessions.isNotEmpty()) {
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Main muscle: ${exercise.primaryMuscle.label}")
-                        if (exercise.secondaryMuscles.isNotEmpty()) {
-                            Text("Also works: ${exercise.secondaryMuscles.joinToString { it.label }}")
+                    // Charts read left to right in time, so oldest session first.
+                    val stats = remember(state.sessions) {
+                        state.sessions.reversed().map { session ->
+                            sessionStats(session.startedAt, session.sets.map { LoggedSet(it.weightKg, it.reps) })
                         }
-                        Text("Equipment: ${exercise.equipment.label}")
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                        ExerciseProgressSection(stats, state.unit)
                     }
                 }
             }
