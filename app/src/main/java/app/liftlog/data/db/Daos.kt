@@ -7,6 +7,8 @@ import androidx.room.Query
 import androidx.room.Transaction
 import app.liftlog.data.Equipment
 import app.liftlog.data.Muscle
+import app.liftlog.domain.PlannedSet
+import app.liftlog.domain.planSets
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -317,14 +319,7 @@ interface WorkoutDao {
                 position = maxPosition(workoutId) + 1,
             ),
         )
-        // Mirror last time's layout, including which sets were warm-ups.
-        val previous = previousSets(exerciseId, workoutId)
-        val warmups = if (previous.isEmpty()) List(DEFAULT_SET_COUNT) { false } else previous.map { it.isWarmup }
-        insertSets(
-            warmups.mapIndexed { index, isWarmup ->
-                SetEntry(workoutExerciseId = workoutExerciseId, setNumber = index + 1, isWarmup = isWarmup)
-            },
-        )
+        insertPlannedSets(workoutExerciseId, exerciseId, workoutId, targetWorkingSets = null)
     }
 
     // --- program-based workouts ---
@@ -348,14 +343,24 @@ interface WorkoutDao {
                 WorkoutExercise(workoutId = workoutId, exerciseId = target.exerciseId, position = index),
             )
             // The target counts working sets; warm-ups done last time are added in front.
-            val warmups = previousSets(target.exerciseId, workoutId).count { it.isWarmup }
-            insertSets(
-                (1..warmups + target.targetSets).map {
-                    SetEntry(workoutExerciseId = workoutExerciseId, setNumber = it, isWarmup = it <= warmups)
-                },
-            )
+            insertPlannedSets(workoutExerciseId, target.exerciseId, workoutId, target.targetSets)
         }
         return workoutId
+    }
+
+    /** Creates the rows for an exercise, laid out and pre-filled with last time's weights. */
+    suspend fun insertPlannedSets(workoutExerciseId: Long, exerciseId: Long, workoutId: Long, targetWorkingSets: Int?) {
+        val previous = previousSets(exerciseId, workoutId).map { PlannedSet(it.isWarmup, it.weightKg) }
+        insertSets(
+            planSets(previous, targetWorkingSets, DEFAULT_SET_COUNT).mapIndexed { index, planned ->
+                SetEntry(
+                    workoutExerciseId = workoutExerciseId,
+                    setNumber = index + 1,
+                    weightKg = planned.weightKg,
+                    isWarmup = planned.isWarmup,
+                )
+            },
+        )
     }
 
     @Query("UPDATE workout_exercise SET position = :position WHERE id = :id")
