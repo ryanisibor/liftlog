@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,11 +23,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,12 +40,16 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -243,7 +249,7 @@ private fun ExerciseCard(
                 }
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 HeaderCell("Set", Modifier.width(SET_COLUMN))
                 HeaderCell("Last time", Modifier.weight(1f))
                 HeaderCell(unit.label, Modifier.width(INPUT_COLUMN))
@@ -253,6 +259,7 @@ private fun ExerciseCard(
 
             exercise.sets.forEachIndexed { index, set ->
                 val previous = previousSets.getOrNull(index)
+                key(set.id) {
                 SetRow(
                     number = index + 1,
                     set = set,
@@ -273,11 +280,21 @@ private fun ExerciseCard(
                     },
                     onDelete = { onDeleteSet(set.id) },
                 )
+                }
             }
 
-            TextButton(onClick = onAddSet) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Text("Add set", modifier = Modifier.padding(start = 4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onAddSet) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Text("Add set", modifier = Modifier.padding(start = 4.dp))
+                }
+                Text(
+                    "Swipe a set left to delete it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.weight(1f).padding(end = 12.dp),
+                )
             }
         }
     }
@@ -327,9 +344,35 @@ private fun SetRow(
         }
     }
 
+    // Swipe left to delete: a deliberate gesture, so a set can't be removed by a stray tap.
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) onDelete()
+            value == SwipeToDismissBoxValue.EndToStart
+        },
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Box(
+                contentAlignment = Alignment.CenterEnd,
+                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer).padding(end = 16.dp),
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete set",
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+        },
+    ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(CardDefaults.cardColors().containerColor)
+            .padding(vertical = 2.dp),
     ) {
         Text(
             number.toString(),
@@ -365,13 +408,7 @@ private fun SetRow(
         FilledIconToggleButton(checked = set.completed, onCheckedChange = { onToggle() }) {
             Icon(Icons.Default.Check, contentDescription = if (set.completed) "Mark set not done" else "Mark set done")
         }
-        IconButton(onClick = onDelete) {
-            Icon(
-                Icons.Default.Close,
-                contentDescription = "Delete set",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+    }
     }
 }
 
@@ -447,4 +484,4 @@ private fun RequestNotificationPermission() {
 
 private val SET_COLUMN = 32.dp
 private val INPUT_COLUMN = 76.dp
-private val ACTION_COLUMNS = 96.dp
+private val ACTION_COLUMNS = 48.dp
