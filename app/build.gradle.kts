@@ -1,6 +1,12 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+}
+
+// Room writes its schema here; the files are committed so migrations can be tested.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 // The signing key lives outside the repo and its password in the macOS Keychain.
@@ -62,6 +68,11 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons.core)
+
+    implementation(libs.androidx.room.runtime)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.datastore.preferences)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)

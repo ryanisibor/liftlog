@@ -1,0 +1,41 @@
+package app.liftlog.domain
+
+import java.math.BigDecimal
+import java.math.RoundingMode
+
+/** Weights are stored in kg; this only affects how they are shown and entered. */
+enum class WeightUnit(val label: String, val kgPerUnit: Double) {
+    KG("kg", 1.0),
+    LB("lb", 0.45359237),
+}
+
+/** Converts a stored kg value to [unit] and formats it with up to two decimals, e.g. "62.5". */
+fun formatWeight(weightKg: Double, unit: WeightUnit): String =
+    BigDecimal(weightKg / unit.kgPerUnit)
+        .setScale(2, RoundingMode.HALF_UP)
+        .stripTrailingZeros()
+        .let { if (it.scale() < 0) it.setScale(0) else it }
+        .toPlainString()
+
+/**
+ * Parses what the user typed, in [unit], into kg. Accepts a comma or a dot as the decimal
+ * separator. Returns null for blank, invalid, negative or implausibly large input.
+ */
+fun parseWeightToKg(text: String, unit: WeightUnit): Double? {
+    val value = text.trim().replace(',', '.').toDoubleOrNull() ?: return null
+    if (value.isNaN() || value < 0 || value > MAX_WEIGHT_INPUT) return null
+    return value * unit.kgPerUnit
+}
+
+/** Parses a rep count. Returns null for blank, invalid or out-of-range input. */
+fun parseReps(text: String): Int? = text.trim().toIntOrNull()?.takeIf { it in 0..MAX_REPS }
+
+/** "60 × 8", or "8 reps" when there is no weight (bodyweight). */
+fun formatSet(weightKg: Double?, reps: Int?, unit: WeightUnit): String = when {
+    reps == null -> "–"
+    weightKg == null -> "$reps reps"
+    else -> "${formatWeight(weightKg, unit)} × $reps"
+}
+
+private const val MAX_WEIGHT_INPUT = 2000.0
+private const val MAX_REPS = 1000
