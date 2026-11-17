@@ -38,7 +38,14 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.liftlog.data.db.DayWithExercises
 import app.liftlog.data.db.Program
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.Share
+import app.liftlog.data.ProgramCodec
+import app.liftlog.data.ProgramTransfer
 import app.liftlog.data.db.ProgramDao
+import java.io.IOException
 import app.liftlog.data.db.ProgramDay
 import app.liftlog.ui.countOf
 import app.liftlog.ui.appContainer
@@ -47,7 +54,27 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class ProgramEditorViewModel(private val programId: Long, private val programDao: ProgramDao) : ViewModel() {
+class ProgramEditorViewModel(
+    private val programId: Long,
+    private val programDao: ProgramDao,
+    private val transfer: ProgramTransfer,
+) : ViewModel() {
+    /** Saves this program, without any workout history, to a file for another phone. */
+    fun export(uri: Uri, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(
+                try {
+                    transfer.exportTo(programId, uri)
+                    "Program saved. Send the file to the other phone and use Import on its Programs tab."
+                } catch (_: IOException) {
+                    "The program could not be saved. Try a different location."
+                } catch (_: SecurityException) {
+                    "The program could not be saved. Try a different location."
+                },
+            )
+        }
+    }
+
     val program: StateFlow<Program?> =
         programDao.observeProgram(programId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -82,7 +109,13 @@ class ProgramEditorViewModel(private val programId: Long, private val programDao
 @Composable
 fun ProgramEditorScreen(programId: Long, onOpenDay: (Long) -> Unit, onBack: () -> Unit) {
     val container = appContainer()
-    val viewModel = viewModel(key = "program-$programId") { ProgramEditorViewModel(programId, container.programDao) }
+    val viewModel = viewModel(key = "program-$programId") {
+        ProgramEditorViewModel(programId, container.programDao, container.programTransfer)
+    }
+    var exportMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let { viewModel.export(it) { result -> exportMessage = result } }
+    }
     val program by viewModel.program.collectAsStateWithLifecycle()
     val days by viewModel.days.collectAsStateWithLifecycle()
 
@@ -100,6 +133,9 @@ fun ProgramEditorScreen(programId: Long, onOpenDay: (Long) -> Unit, onBack: () -
                     }
                 },
                 actions = {
+                    IconButton(onClick = { exportLauncher.launch(ProgramCodec.fileName(program?.name ?: "")) }) {
+                        Icon(Icons.Default.Share, contentDescription = "Export program to a file")
+                    }
                     IconButton(onClick = { showRename = true }) {
                         Icon(Icons.Default.Edit, contentDescription = "Rename program")
                     }
@@ -115,6 +151,7 @@ fun ProgramEditorScreen(programId: Long, onOpenDay: (Long) -> Unit, onBack: () -
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            exportMessage?.let { item { Text(it, color = MaterialTheme.colorScheme.primary) } }
             if (days.isEmpty()) {
                 item {
                     Text(

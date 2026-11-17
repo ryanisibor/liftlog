@@ -6,6 +6,9 @@ import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.Transaction
+import app.liftlog.data.ProgramFile
+import app.liftlog.data.ProgramFileDay
+import app.liftlog.data.ProgramFileExercise
 import kotlinx.coroutines.flow.Flow
 
 data class DayExerciseWithExercise(
@@ -110,6 +113,90 @@ interface ProgramDao {
     suspend fun swapItems(first: ProgramDayExercise, second: ProgramDayExercise) {
         setItemPosition(first.id, second.position)
         setItemPosition(second.id, first.position)
+    }
+
+    // --- copying a program between phones ---
+
+    @Query("SELECT * FROM program WHERE id = :id")
+    suspend fun program(id: Long): Program?
+
+    @Transaction
+    @Query("SELECT * FROM program_day WHERE programId = :programId ORDER BY position")
+    suspend fun days(programId: Long): List<DayWithExercises>
+
+    @Query("SELECT * FROM exercise WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun exerciseByName(name: String): Exercise?
+
+    @Insert
+    suspend fun insertExercise(exercise: Exercise): Long
+
+    @Query("UPDATE exercise SET archived = 0 WHERE id = :id")
+    suspend fun unarchiveExercise(id: Long)
+
+    /** A program as a standalone file: its days, exercises by name, and targets. */
+    @Transaction
+    suspend fun programFile(programId: Long): ProgramFile? {
+        val program = program(programId) ?: return null
+        return ProgramFile(
+            name = program.name,
+            days = days(programId).map { day ->
+                ProgramFileDay(
+                    name = day.day.name,
+                    exercises = day.items.map {
+                        ProgramFileExercise(
+                            exercise = it.exercise.name,
+                            primaryMuscle = it.exercise.primaryMuscle,
+                            secondaryMuscles = it.exercise.secondaryMuscles,
+                            equipment = it.exercise.equipment,
+                            sets = it.item.targetSets,
+                            repMin = it.item.repMin,
+                            repMax = it.item.repMax,
+                            restSeconds = it.item.restSeconds,
+                        )
+                    },
+                )
+            },
+        )
+    }
+
+    /**
+     * Adds [file] as a new program and returns its id. Exercises are matched by name; one
+     * this phone lacks is created as a custom exercise, and a hidden one is brought back.
+     * The new program becomes active only if it is the first.
+     */
+    @Transaction
+    suspend fun addProgramFromFile(file: ProgramFile): Long {
+        val isFirst = programCount() == 0
+        val programId = insertProgram(Program(name = file.name))
+        file.days.forEachIndexed { dayIndex, day ->
+            val dayId = insertDay(ProgramDay(programId = programId, position = dayIndex, name = day.name))
+            day.exercises.forEachIndexed { itemIndex, item ->
+                val existing = exerciseByName(item.exercise)
+                if (existing?.archived == true) unarchiveExercise(existing.id)
+                val exerciseId = existing?.id ?: insertExercise(
+                    Exercise(
+                        name = item.exercise,
+                        primaryMuscle = item.primaryMuscle,
+                        secondaryMuscles = item.secondaryMuscles,
+                        equipment = item.equipment,
+                        isCustom = true,
+                    ),
+                )
+                insertItem(
+                    ProgramDayExercise(
+                        programDayId = dayId,
+                        exerciseId = exerciseId,
+                        position = itemIndex,
+                        targetSets = item.sets,
+                        repMin = item.repMin,
+                        repMax = item.repMax,
+                        restSeconds = item.restSeconds,
+                    ),
+                )
+            }
+        }
+        if (isFirst) setActiveProgram(programId)
+        return programId
     }
 
     // --- what the Home screen needs to know about past training ---

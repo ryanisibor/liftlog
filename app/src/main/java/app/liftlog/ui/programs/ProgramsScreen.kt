@@ -34,14 +34,47 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.liftlog.data.db.Program
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.TextButton
+import app.liftlog.data.InvalidProgramFileException
+import app.liftlog.data.ProgramTransfer
 import app.liftlog.data.db.ProgramDao
+import kotlinx.coroutines.flow.MutableStateFlow
+import java.io.IOException
 import app.liftlog.ui.appContainer
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class ProgramsViewModel(private val programDao: ProgramDao) : ViewModel() {
+class ProgramsViewModel(
+    private val programDao: ProgramDao,
+    private val transfer: ProgramTransfer,
+) : ViewModel() {
+    private val _message = MutableStateFlow<String?>(null)
+
+    /** Why the last import failed, if it did. */
+    val message: StateFlow<String?> = _message
+
+    /** Adds a program from a file exported on this or another phone, then opens it. */
+    fun import(uri: Uri, onImported: (Long) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val id = transfer.importFrom(uri)
+                _message.value = null
+                onImported(id)
+            } catch (e: InvalidProgramFileException) {
+                _message.value = e.message
+            } catch (_: IOException) {
+                _message.value = "The file could not be read."
+            } catch (_: SecurityException) {
+                _message.value = "The file could not be read."
+            }
+        }
+    }
+
     val programs: StateFlow<List<Program>> =
         programDao.observePrograms().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -64,12 +97,25 @@ class ProgramsViewModel(private val programDao: ProgramDao) : ViewModel() {
 @Composable
 fun ProgramsScreen(onOpenProgram: (Long) -> Unit) {
     val container = appContainer()
-    val viewModel = viewModel { ProgramsViewModel(container.programDao) }
+    val viewModel = viewModel { ProgramsViewModel(container.programDao, container.programTransfer) }
+    val message by viewModel.message.collectAsStateWithLifecycle()
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { viewModel.import(it, onOpenProgram) }
+    }
     val programs by viewModel.programs.collectAsStateWithLifecycle()
     var showCreate by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Programs") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Programs") },
+                actions = {
+                    TextButton(
+                        onClick = { importLauncher.launch(arrayOf("application/json", "application/octet-stream", "text/plain")) },
+                    ) { Text("Import") }
+                },
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = { showCreate = true }) {
                 Icon(Icons.Default.Add, contentDescription = "Create program")
@@ -81,11 +127,12 @@ fun ProgramsScreen(onOpenProgram: (Long) -> Unit) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            message?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
             if (programs.isEmpty()) {
                 item {
                     Text(
                         "A program is your training week: a set of days, each with its exercises, " +
-                            "sets and rep ranges. Tap + to create one.",
+                            "sets and rep ranges. Tap + to create one, or Import to load one shared from another phone.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
