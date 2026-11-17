@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A simple barbell, drawn inside the adaptive icon safe zone (centre 66dp of 108dp). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- bar -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,51h48v6h-48z" />
+    <!-- inner plates -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,38h7v32h-7z M65,38h7v32h-7z" />
+    <!-- outer plates -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,44h6v20h-6z M74,44h6v20h-6z" />
+</vector>

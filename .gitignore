@@ -1,0 +1,26 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+.mcp.json
+*.jks
+*.keystore
+local.properties
+
+# Gradle / Android build output
+.gradle/
+build/
+.kotlin/
+captures/
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Terraform (workspace default)
+.terraform/
+*.tfstate
+*.tfstate.backup
