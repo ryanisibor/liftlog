@@ -80,18 +80,25 @@ internal fun MoveButtons(canMoveUp: Boolean, canMoveDown: Boolean, onMoveUp: () 
 
 /** A labelled number with minus and plus buttons, kept within [range]. */
 @Composable
-internal fun Stepper(label: String, value: Int, range: IntRange, onChange: (Int) -> Unit) {
+internal fun Stepper(
+    label: String,
+    value: Int,
+    range: IntRange,
+    onChange: (Int) -> Unit,
+    step: Int = 1,
+    format: (Int) -> String = { it.toString() },
+) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        FilledTonalIconButton(onClick = { onChange(value - 1) }, enabled = value > range.first) {
+        FilledTonalIconButton(onClick = { onChange(value - step) }, enabled = value > range.first) {
             Text("−", style = MaterialTheme.typography.titleMedium)
         }
         Text(
-            "$value\n$label",
+            "${format(value)}\n$label",
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.widthIn(min = 52.dp),
         )
-        FilledTonalIconButton(onClick = { onChange(value + 1) }, enabled = value < range.last) {
+        FilledTonalIconButton(onClick = { onChange(value + step) }, enabled = value < range.last) {
             Text("+", style = MaterialTheme.typography.titleMedium)
         }
     }

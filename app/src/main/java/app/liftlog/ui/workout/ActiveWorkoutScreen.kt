@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import app.liftlog.ui.formatDateTime
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -92,6 +95,12 @@ fun ActiveWorkoutScreen(
         followId = null
     }
 
+    val dayName by viewModel.dayName.collectAsStateWithLifecycle()
+    val isEditing = state?.isEditing == true
+    // Leaving an edited workout by any route saves it, so unticked rows never linger in history.
+    val saveEdits = { viewModel.doneEditing { onClose() } }
+    BackHandler(enabled = isEditing, onBack = saveEdits)
+
     val totalSets = exercises.sumOf { it.sets.size }
     val doneSets = exercises.sumOf { exercise -> exercise.sets.count { it.completed } }
 
@@ -100,26 +109,44 @@ fun ActiveWorkoutScreen(
             TopAppBar(
                 title = {
                     state?.let {
-                        Text(
-                            formatDuration((now - it.workout.startedAt) / 1000),
-                            style = MaterialTheme.typography.titleLarge,
-                        )
+                        Column {
+                            Text(
+                                if (isEditing) "Editing ${dayName ?: "workout"}" else dayName ?: "Workout",
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                            )
+                            Text(
+                                if (isEditing) formatDateTime(it.workout.startedAt) else formatDuration((now - it.workout.startedAt) / 1000),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = { showOptions = true }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Workout options")
+                    if (isEditing) {
+                        IconButton(onClick = saveEdits) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Save and go back")
+                        }
+                    } else {
+                        IconButton(onClick = { showOptions = true }) {
+                            Icon(Icons.Default.Menu, contentDescription = "Workout options")
+                        }
                     }
                 },
                 actions = {
-                    Button(onClick = { confirmFinish = true }, modifier = Modifier.padding(end = 12.dp)) {
-                        Text("Finish")
+                    Button(
+                        onClick = { if (isEditing) saveEdits() else confirmFinish = true },
+                        modifier = Modifier.padding(end = 12.dp),
+                    ) {
+                        Text(if (isEditing) "Done" else "Finish")
                     }
                 },
             )
         },
         bottomBar = {
-            Column(modifier = Modifier.navigationBarsPadding()) {
+            // A finished workout being corrected has no rest timer and no progress to show.
+            if (!isEditing) Column(modifier = Modifier.navigationBarsPadding()) {
                 val endsAt = restEndsAt
                 if (endsAt != null && endsAt > now) {
                     RestTimerBar(
@@ -171,7 +198,10 @@ fun ActiveWorkoutScreen(
                             },
                             onWeightTyped = { setId, text -> viewModel.onWeightTyped(setId, text, current.unit) },
                             onRepsTyped = viewModel::onRepsTyped,
-                            onToggle = { set, previous -> viewModel.toggleCompleted(set, previous, current.restSeconds) },
+                            onToggle = { set, previous ->
+                                viewModel.toggleCompleted(set, previous, current.restSecondsFor(exercise.exercise.id))
+                            },
+                            onToggleWarmup = viewModel::toggleWarmup,
                             onDeleteSet = viewModel::deleteSet,
                             onAddSet = { viewModel.addSet(exercise) },
                             onRemoveLastSet = { viewModel.removeLastSet(exercise) },
@@ -202,9 +232,9 @@ fun ActiveWorkoutScreen(
     notesFor?.let { exercise ->
         NotesDialog(
             exerciseName = exercise.exercise.name,
-            initial = exercise.workoutExercise.notes,
+            initial = exercise.exercise.notes,
             onDismiss = { notesFor = null },
-            onSave = { viewModel.setNotes(exercise.workoutExercise.id, it); notesFor = null },
+            onSave = { viewModel.setExerciseNotes(exercise.exercise.id, it); notesFor = null },
         )
     }
 

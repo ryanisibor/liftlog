@@ -7,6 +7,7 @@ import androidx.compose.ui.Alignment
 import app.liftlog.ui.components.MuscleDiagramPair
 import androidx.compose.runtime.remember
 import app.liftlog.domain.LoggedSet
+import app.liftlog.domain.setLabels
 import app.liftlog.domain.sessionStats
 import app.liftlog.ui.progress.ExerciseProgressSection
 import androidx.compose.foundation.layout.Column
@@ -119,6 +120,9 @@ fun ExerciseDetailScreen(exerciseId: Long, onBack: () -> Unit) {
                                 Text("Also works: ${exercise.secondaryMuscles.joinToString { it.label }}")
                             }
                             Text("Equipment: ${exercise.equipment.label}")
+                            if (exercise.notes.isNotEmpty()) {
+                                Text("Note: ${exercise.notes}", color = MaterialTheme.colorScheme.primary)
+                            }
                         }
                         MuscleDiagramPair(
                             exercise.primaryMuscle,
@@ -133,7 +137,11 @@ fun ExerciseDetailScreen(exerciseId: Long, onBack: () -> Unit) {
                     // Charts read left to right in time, so oldest session first.
                     val stats = remember(state.sessions) {
                         state.sessions.reversed().map { session ->
-                            sessionStats(session.startedAt, session.sets.map { LoggedSet(it.weightKg, it.reps) })
+                            // Warm-ups are left out of charts and records.
+                            sessionStats(
+                                session.startedAt,
+                                session.sets.filter { !it.isWarmup }.map { LoggedSet(it.weightKg, it.reps) },
+                            )
                         }
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
@@ -165,8 +173,12 @@ fun ExerciseSessionCard(session: ExerciseSession, unit: WeightUnit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(formatDate(session.startedAt), style = MaterialTheme.typography.titleSmall)
+            val labels = setLabels(session.sets.map { it.isWarmup })
             session.sets.forEachIndexed { index, set ->
-                Text("${index + 1}.  ${formatSet(set.weightKg, set.reps, unit)} ${weightSuffix(set, unit)}")
+                Text(
+                    "${labels[index]}.  ${formatSet(set.weightKg, set.reps, unit)} ${weightSuffix(set, unit)}",
+                    color = if (set.isWarmup) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                )
             }
         }
     }

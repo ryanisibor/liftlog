@@ -67,10 +67,13 @@ fun HistoryScreen(onOpenWorkout: (Long) -> Unit, onBack: () -> Unit) {
             items(history, key = { it.id }) { workout ->
                 Card(modifier = Modifier.fillMaxWidth().clickable { onOpenWorkout(workout.id) }) {
                     ListItem(
-                        headlineContent = { Text(formatDateTime(workout.startedAt)) },
+                        headlineContent = { Text(workout.dayName ?: "Workout") },
                         supportingContent = {
                             val duration = formatDurationCoarse((workout.finishedAt - workout.startedAt) / 1000)
-                            Text("${workout.exerciseCount} exercises · ${workout.setCount} sets · $duration")
+                            Text(
+                                formatDateTime(workout.startedAt) + "\n" +
+                                    "${workout.exerciseCount} exercises · ${workout.setCount} sets · $duration",
+                            )
                         },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )

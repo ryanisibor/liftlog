@@ -3,6 +3,7 @@ package app.liftlog.ui.workout
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.liftlog.data.SettingsRepository
+import app.liftlog.data.db.ExerciseDao
 import app.liftlog.data.db.ProgramDayExercise
 import app.liftlog.data.db.SetEntry
 import app.liftlog.data.db.Workout
@@ -33,15 +34,26 @@ data class WorkoutState(
     val restSeconds: Int,
     /** Target sets and rep range from the program, keyed by exercise id; empty for ad-hoc workouts. */
     val targets: Map<Long, ProgramDayExercise> = emptyMap(),
-)
+) {
+    /** True when this is a finished workout opened for correction, not one in progress. */
+    val isEditing: Boolean get() = workout.finishedAt != null
+
+    /** The rest to take after a set of this exercise: the program's, or the default. */
+    fun restSecondsFor(exerciseId: Long): Int = targets[exerciseId]?.restSeconds ?: restSeconds
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ActiveWorkoutViewModel(
     private val workoutId: Long,
     private val workoutDao: WorkoutDao,
+    private val exerciseDao: ExerciseDao,
     settings: SettingsRepository,
     private val restTimer: RestTimer,
 ) : ViewModel() {
+
+    /** Name of the program day this workout came from, e.g. "Upper Body A"; null if ad-hoc. */
+    val dayName: StateFlow<String?> = workoutDao.observeWorkoutDayName(workoutId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val exercises = workoutDao.observeExercises(workoutId)
 
@@ -99,8 +111,13 @@ class ActiveWorkoutViewModel(
         viewModelScope.launch { workoutDao.setWorkoutExerciseExercise(workoutExerciseId, newExerciseId) }
     }
 
-    fun setNotes(workoutExerciseId: Long, notes: String) {
-        viewModelScope.launch { workoutDao.setWorkoutExerciseNotes(workoutExerciseId, notes.trim().take(MAX_NOTE_LENGTH)) }
+    /** Saves the standing note for an exercise; it shows in every workout that includes it. */
+    fun setExerciseNotes(exerciseId: Long, notes: String) {
+        viewModelScope.launch { exerciseDao.setNotes(exerciseId, notes.trim().take(MAX_NOTE_LENGTH)) }
+    }
+
+    fun toggleWarmup(set: SetEntry) {
+        viewModelScope.launch { workoutDao.setWarmup(set.id, !set.isWarmup) }
     }
 
     /** Removes the bottom set of the exercise, unless it has already been ticked. */
@@ -150,8 +167,17 @@ class ActiveWorkoutViewModel(
             val reps = set.reps ?: previous?.reps ?: return@launch
             val weightKg = set.weightKg ?: previous?.weightKg
             workoutDao.setCompletion(set.id, weightKg, reps, completed = true)
-            restTimer.start(restSeconds)
+            // No rest timer when correcting a workout that is already finished.
+            if (state.value?.isEditing != true) restTimer.start(restSeconds)
         }
+    }
+
+    /**
+     * Saves edits to an already finished workout: unticked sets are dropped, as on finishing.
+     * [onDone] receives false if nothing was left and the workout was deleted.
+     */
+    fun doneEditing(onDone: (kept: Boolean) -> Unit) {
+        viewModelScope.launch { onDone(workoutDao.pruneWorkout(workoutId)) }
     }
 
     fun addRestTime(seconds: Int) = restTimer.addSeconds(seconds)

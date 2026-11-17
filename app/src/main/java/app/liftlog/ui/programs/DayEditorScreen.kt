@@ -42,6 +42,7 @@ import app.liftlog.data.db.DayExerciseWithExercise
 import app.liftlog.data.db.DayWithExercises
 import app.liftlog.data.db.ProgramDao
 import app.liftlog.data.db.ProgramDayExercise
+import app.liftlog.ui.formatDuration
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -92,6 +93,10 @@ class DayEditorViewModel(
         viewModelScope.launch { programDao.setItemTargets(item.id, sets.coerceIn(SET_RANGE), fixedMin, fixedMax) }
     }
 
+    fun setRest(item: ProgramDayExercise, seconds: Int) {
+        viewModelScope.launch { programDao.setItemRest(item.id, seconds.coerceIn(REST_RANGE)) }
+    }
+
     fun swap(first: ProgramDayExercise, second: ProgramDayExercise) {
         viewModelScope.launch { programDao.swapItems(first, second) }
     }
@@ -103,6 +108,8 @@ class DayEditorViewModel(
     companion object {
         val SET_RANGE = 1..12
         val REP_RANGE = 1..50
+        val REST_RANGE = 15..600
+        const val REST_STEP = 15
         private const val DEFAULT_SETS = 3
         private const val DEFAULT_REP_MIN = 8
         private const val DEFAULT_REP_MAX = 12
@@ -162,6 +169,7 @@ fun DayEditorScreen(viewModel: DayEditorViewModel, onAddExercise: () -> Unit, on
                     onSets = { viewModel.setTargets(item.item, sets = it) },
                     onRepMin = { viewModel.setTargets(item.item, repMin = it) },
                     onRepMax = { viewModel.setTargets(item.item, repMax = it) },
+                    onRest = { viewModel.setRest(item.item, it) },
                     onRemove = { viewModel.remove(item.item.id) },
                 )
             }
@@ -202,6 +210,7 @@ private fun DayExerciseCard(
     onSets: (Int) -> Unit,
     onRepMin: (Int) -> Unit,
     onRepMax: (Int) -> Unit,
+    onRest: (Int) -> Unit,
     onRemove: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -227,6 +236,14 @@ private fun DayExerciseCard(
                 Stepper("sets", item.item.targetSets, DayEditorViewModel.SET_RANGE, onSets)
                 Stepper("min reps", item.item.repMin, DayEditorViewModel.REP_RANGE, onRepMin)
                 Stepper("max reps", item.item.repMax, DayEditorViewModel.REP_RANGE, onRepMax)
+                Stepper(
+                    label = "rest",
+                    value = item.item.restSeconds,
+                    range = DayEditorViewModel.REST_RANGE,
+                    onChange = onRest,
+                    step = DayEditorViewModel.REST_STEP,
+                    format = { formatDuration(it.toLong()) },
+                )
             }
         }
     }

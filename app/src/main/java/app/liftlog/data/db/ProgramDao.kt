@@ -97,6 +97,9 @@ interface ProgramDao {
     @Query("UPDATE program_day_exercise SET targetSets = :sets, repMin = :repMin, repMax = :repMax WHERE id = :id")
     suspend fun setItemTargets(id: Long, sets: Int, repMin: Int, repMax: Int)
 
+    @Query("UPDATE program_day_exercise SET restSeconds = :restSeconds WHERE id = :id")
+    suspend fun setItemRest(id: Long, restSeconds: Int)
+
     @Query("UPDATE program_day_exercise SET position = :position WHERE id = :id")
     suspend fun setItemPosition(id: Long, position: Int)
 
@@ -135,7 +138,7 @@ interface ProgramDao {
         SELECT we.exerciseId AS exerciseId, MAX(s.weightKg) AS weightKg
         FROM set_entry s
         JOIN workout_exercise we ON s.workoutExerciseId = we.id
-        WHERE s.completed = 1 AND we.workoutId = (
+        WHERE s.completed = 1 AND s.isWarmup = 0 AND we.workoutId = (
             SELECT w2.id FROM workout w2
             JOIN workout_exercise we2 ON we2.workoutId = w2.id
             WHERE we2.exerciseId = we.exerciseId AND w2.finishedAt IS NOT NULL

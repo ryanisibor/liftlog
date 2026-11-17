@@ -209,7 +209,12 @@ fun LiftLogApp() {
                 )
             }
             composable(ROUTE_WORKOUT_DETAIL, arguments = idArgument) { entry ->
-                WorkoutDetailScreen(workoutId = entry.id(), onBack = { navController.popBackStack() })
+                WorkoutDetailScreen(
+                    workoutId = entry.id(),
+                    // Editing reuses the workout screen, which adapts when the workout is finished.
+                    onEdit = { navController.navigate("workout/${entry.id()}") },
+                    onBack = { navController.popBackStack() },
+                )
             }
             composable(ROUTE_EXERCISE_DETAIL, arguments = idArgument) { entry ->
                 ExerciseDetailScreen(exerciseId = entry.id(), onBack = { navController.popBackStack() })
@@ -223,7 +228,7 @@ private fun activeWorkoutViewModel(workoutEntry: NavBackStackEntry): ActiveWorko
     val container = appContainer()
     val workoutId = workoutEntry.id()
     return viewModel(viewModelStoreOwner = workoutEntry) {
-        ActiveWorkoutViewModel(workoutId, container.workoutDao, container.settings, container.restTimer)
+        ActiveWorkoutViewModel(workoutId, container.workoutDao, container.exerciseDao, container.settings, container.restTimer)
     }
 }
 

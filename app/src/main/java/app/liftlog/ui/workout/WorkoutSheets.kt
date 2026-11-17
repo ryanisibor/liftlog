@@ -131,7 +131,7 @@ internal fun NotesDialog(exerciseName: String, initial: String, onDismiss: () ->
             OutlinedTextField(
                 value = text,
                 onValueChange = { if (it.length <= 500) text = it },
-                placeholder = { Text("Seat height, grip, how it felt…") },
+                placeholder = { Text("Seat height, grip, cues. Shown every time you do this exercise.") },
                 minLines = 3,
                 maxLines = 6,
             )

@@ -70,6 +70,7 @@ internal class ExercisePageActions(
     val onWeightTyped: (setId: Long, text: String) -> Unit,
     val onRepsTyped: (setId: Long, text: String) -> Unit,
     val onToggle: (set: SetEntry, previous: SetEntry?) -> Unit,
+    val onToggleWarmup: (set: SetEntry) -> Unit,
     val onDeleteSet: (setId: Long) -> Unit,
     val onAddSet: () -> Unit,
     val onRemoveLastSet: () -> Unit,
@@ -91,7 +92,7 @@ internal fun ExercisePage(
     target: ProgramDayExercise?,
     actions: ExercisePageActions,
 ) {
-    val notes = exercise.workoutExercise.notes
+    val notes = exercise.exercise.notes
 
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(bottom = 16.dp),
@@ -155,7 +156,7 @@ internal fun ExercisePage(
         SetTable(exercise, previousSets, unit, actions)
 
         Text(
-            "Swipe a set left to delete it",
+            "Tap a set number to mark it as a warm-up · swipe a set left to delete it",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -192,7 +193,9 @@ private fun SetTable(
                 val previous = previousSets.getOrNull(index)
                 key(set.id) {
                     SetRow(
-                        number = index + 1,
+                        // Warm-ups show as W; working sets are numbered among themselves.
+                        label = if (set.isWarmup) "W" else exercise.sets.take(index + 1).count { !it.isWarmup }.toString(),
+                        onToggleWarmup = { actions.onToggleWarmup(set) },
                         set = set,
                         previous = previous,
                         unit = unit,
@@ -254,7 +257,8 @@ private fun HeaderCell(text: String, modifier: Modifier) {
 
 @Composable
 private fun SetRow(
-    number: Int,
+    label: String,
+    onToggleWarmup: () -> Unit,
     set: SetEntry,
     previous: SetEntry?,
     unit: WeightUnit,
@@ -316,10 +320,17 @@ private fun SetRow(
                 .padding(horizontal = 8.dp, vertical = 2.dp),
         ) {
             Text(
-                number.toString(),
+                label,
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.width(SET_COLUMN),
+                color = if (set.isWarmup) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .width(SET_COLUMN)
+                    .clickable(
+                        onClickLabel = if (set.isWarmup) "Mark as working set" else "Mark as warm-up",
+                        onClick = onToggleWarmup,
+                    )
+                    .padding(vertical = 14.dp),
             )
             Text(
                 previous?.let { formatSet(it.weightKg, it.reps, unit) } ?: "–",

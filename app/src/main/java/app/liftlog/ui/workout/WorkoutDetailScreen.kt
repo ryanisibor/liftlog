@@ -11,6 +11,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.runtime.LaunchedEffect
+import app.liftlog.domain.setLabels
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,6 +54,9 @@ data class WorkoutDetailState(
     val workout: Workout? = null,
     val exercises: List<WorkoutExerciseWithSets> = emptyList(),
     val unit: WeightUnit = WeightUnit.KG,
+    /** Name of the program day it was started from; null for ad-hoc workouts. */
+    val dayName: String? = null,
+    val loaded: Boolean = false,
 )
 
 class WorkoutDetailViewModel(
@@ -62,21 +68,19 @@ class WorkoutDetailViewModel(
         workoutDao.observeWorkout(workoutId),
         workoutDao.observeExercises(workoutId),
         settings.weightUnit,
-        ::WorkoutDetailState,
-    ).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkoutDetailState())
+        workoutDao.observeWorkoutDayName(workoutId),
+    ) { workout, exercises, unit, dayName -> WorkoutDetailState(workout, exercises, unit, dayName, loaded = true) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkoutDetailState())
 
-    fun delete(onDone: () -> Unit) {
-        viewModelScope.launch {
-            workoutDao.deleteWorkout(workoutId)
-            onDone()
-        }
+    fun delete() {
+        viewModelScope.launch { workoutDao.deleteWorkout(workoutId) }
     }
 }
 
 /** Read-only view of a finished workout. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WorkoutDetailScreen(workoutId: Long, onBack: () -> Unit) {
+fun WorkoutDetailScreen(workoutId: Long, onEdit: () -> Unit, onBack: () -> Unit) {
     val container = appContainer()
     val viewModel = viewModel(key = "workout-detail-$workoutId") {
         WorkoutDetailViewModel(workoutId, container.workoutDao, container.settings)
@@ -85,16 +89,33 @@ fun WorkoutDetailScreen(workoutId: Long, onBack: () -> Unit) {
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val workout = state.workout
 
+    // The workout is gone: deleted here, or emptied out while being edited. Leave once.
+    LaunchedEffect(state.loaded, workout == null) {
+        if (state.loaded && workout == null) onBack()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(workout?.let { formatDateTime(it.startedAt) } ?: "") },
+                title = {
+                    Column {
+                        Text(state.dayName ?: "Workout", style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                        Text(
+                            workout?.let { formatDateTime(it.startedAt) } ?: "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit workout")
+                    }
                     IconButton(onClick = { confirmDelete = true }) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete workout")
                     }
@@ -120,9 +141,13 @@ fun WorkoutDetailScreen(workoutId: Long, onBack: () -> Unit) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(exercise.exercise.name, style = MaterialTheme.typography.titleSmall)
+                        val labels = setLabels(exercise.sets.map { it.isWarmup })
                         exercise.sets.forEachIndexed { index, set ->
                             val suffix = if (set.weightKg != null && set.reps != null) state.unit.label else ""
-                            Text("${index + 1}.  ${formatSet(set.weightKg, set.reps, state.unit)} $suffix")
+                            Text(
+                                "${labels[index]}.  ${formatSet(set.weightKg, set.reps, state.unit)} $suffix",
+                                color = if (set.isWarmup) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                            )
                         }
                     }
                 }
@@ -136,7 +161,7 @@ fun WorkoutDetailScreen(workoutId: Long, onBack: () -> Unit) {
             title = { Text("Delete workout?") },
             text = { Text("This workout and its sets will be removed from your history. This can't be undone.") },
             confirmButton = {
-                TextButton(onClick = { confirmDelete = false; viewModel.delete(onBack) }) { Text("Delete") }
+                TextButton(onClick = { confirmDelete = false; viewModel.delete() }) { Text("Delete") }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )

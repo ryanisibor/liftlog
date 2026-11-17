@@ -1,5 +1,6 @@
 package app.liftlog.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -20,6 +21,8 @@ data class Exercise(
     val equipment: Equipment,
     val isCustom: Boolean = false,
     val archived: Boolean = false,
+    /** The user's standing note for this exercise (seat height, grip), shown in every workout. */
+    @ColumnInfo(defaultValue = "") val notes: String = "",
 )
 
 @Serializable
@@ -170,6 +173,8 @@ data class WorkoutSummary(
     val finishedAt: Long,
     val exerciseCount: Int,
     val setCount: Int,
+    /** Name of the program day it was started from; null for ad-hoc workouts. */
+    val dayName: String?,
 )
 
 /** An exercise that has been logged at least once, for the Progress list. */
@@ -188,4 +193,5 @@ data class ExerciseHistoryRow(
     val setNumber: Int,
     val weightKg: Double?,
     val reps: Int?,
+    val isWarmup: Boolean,
 )

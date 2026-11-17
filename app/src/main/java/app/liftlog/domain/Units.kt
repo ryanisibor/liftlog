@@ -37,5 +37,14 @@ fun formatSet(weightKg: Double?, reps: Int?, unit: WeightUnit): String = when {
     else -> "${formatWeight(weightKg, unit)} × $reps"
 }
 
+/**
+ * Labels for a list of sets given which are warm-ups: "W" for a warm-up, and working sets
+ * numbered among themselves, so two warm-ups then three sets read W, W, 1, 2, 3.
+ */
+fun setLabels(isWarmup: List<Boolean>): List<String> {
+    var working = 0
+    return isWarmup.map { warmup -> if (warmup) "W" else (++working).toString() }
+}
+
 private const val MAX_WEIGHT_INPUT = 2000.0
 private const val MAX_REPS = 1000

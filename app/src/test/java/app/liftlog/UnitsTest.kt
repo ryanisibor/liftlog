@@ -5,6 +5,7 @@ import app.liftlog.domain.formatSet
 import app.liftlog.domain.formatWeight
 import app.liftlog.domain.parseReps
 import app.liftlog.domain.parseWeightToKg
+import app.liftlog.domain.setLabels
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -54,6 +55,13 @@ class UnitsTest {
         assertNull(parseReps("8.5"))
         assertNull(parseReps("-1"))
         assertNull(parseReps("5000"))
+    }
+
+    @Test
+    fun `labels warm-ups as W and numbers working sets among themselves`() {
+        assertEquals(listOf("W", "W", "1", "2", "3"), setLabels(listOf(true, true, false, false, false)))
+        assertEquals(listOf("1", "W", "2"), setLabels(listOf(false, true, false)))
+        assertEquals(emptyList<String>(), setLabels(emptyList()))
     }
 
     @Test

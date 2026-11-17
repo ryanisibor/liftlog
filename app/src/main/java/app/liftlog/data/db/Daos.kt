@@ -19,6 +19,9 @@ interface ExerciseDao {
     @Insert
     suspend fun insert(exercise: Exercise): Long
 
+    @Query("UPDATE exercise SET notes = :notes WHERE id = :id")
+    suspend fun setNotes(id: Long, notes: String)
+
     /** Used for seeding: entries whose name already exists are skipped. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnoringExisting(exercises: List<Exercise>)
@@ -42,17 +45,22 @@ interface WorkoutDao {
 
     @Query(
         """
-        SELECT w.id, w.startedAt, w.finishedAt,
+        SELECT w.id, w.startedAt, w.finishedAt, d.name AS dayName,
             (SELECT COUNT(*) FROM workout_exercise we WHERE we.workoutId = w.id) AS exerciseCount,
             (SELECT COUNT(*) FROM set_entry s
                 JOIN workout_exercise we ON s.workoutExerciseId = we.id
                 WHERE we.workoutId = w.id AND s.completed = 1) AS setCount
         FROM workout w
+        LEFT JOIN program_day d ON d.id = w.programDayId
         WHERE w.finishedAt IS NOT NULL
         ORDER BY w.startedAt DESC
         """,
     )
     fun observeFinishedWorkouts(): Flow<List<WorkoutSummary>>
+
+    /** Name of the program day a workout was started from; null for ad-hoc workouts. */
+    @Query("SELECT d.name FROM workout w JOIN program_day d ON d.id = w.programDayId WHERE w.id = :workoutId")
+    fun observeWorkoutDayName(workoutId: Long): Flow<String?>
 
     @Query("UPDATE workout SET finishedAt = :finishedAt WHERE id = :id")
     suspend fun setFinishedAt(id: Long, finishedAt: Long)
@@ -102,7 +110,13 @@ interface WorkoutDao {
     @Query("DELETE FROM set_entry WHERE id = :id")
     suspend fun deleteSet(id: Long)
 
-    /** Completed sets of [exerciseId] from the most recent finished workout other than the current one. */
+    @Query("UPDATE set_entry SET isWarmup = :isWarmup WHERE id = :id")
+    suspend fun setWarmup(id: Long, isWarmup: Boolean)
+
+    /**
+     * Completed sets of [exerciseId] from the most recent finished workout that started
+     * before the current one. "Before" matters when an older workout is being edited.
+     */
     @Query(
         """
         SELECT s.* FROM set_entry s
@@ -112,6 +126,7 @@ interface WorkoutDao {
             WHERE we.exerciseId = :exerciseId
                 AND w.finishedAt IS NOT NULL
                 AND w.id != :currentWorkoutId
+                AND w.startedAt <= (SELECT startedAt FROM workout WHERE id = :currentWorkoutId)
             ORDER BY w.startedAt DESC
             LIMIT 1
         )
@@ -122,7 +137,7 @@ interface WorkoutDao {
 
     @Query(
         """
-        SELECT w.id AS workoutId, w.startedAt, s.setNumber, s.weightKg, s.reps
+        SELECT w.id AS workoutId, w.startedAt, s.setNumber, s.weightKg, s.reps, s.isWarmup
         FROM set_entry s
         JOIN workout_exercise we ON s.workoutExerciseId = we.id
         JOIN workout w ON w.id = we.workoutId
@@ -138,7 +153,7 @@ interface WorkoutDao {
         SELECT e.id AS exerciseId, e.name AS name,
             MAX(w.startedAt) AS lastTrainedAt,
             COUNT(DISTINCT w.id) AS sessionCount,
-            MAX(s.weightKg) AS maxWeightKg
+            MAX(CASE WHEN s.isWarmup = 0 THEN s.weightKg END) AS maxWeightKg
         FROM set_entry s
         JOIN workout_exercise we ON s.workoutExerciseId = we.id
         JOIN workout w ON w.id = we.workoutId
@@ -183,13 +198,23 @@ interface WorkoutDao {
      */
     @Transaction
     suspend fun finishWorkout(workoutId: Long, finishedAt: Long): Boolean {
+        if (!pruneWorkout(workoutId)) return false
+        setFinishedAt(workoutId, finishedAt)
+        return true
+    }
+
+    /**
+     * Drops unticked sets and exercises left with none. Returns false, and deletes the
+     * workout, if nothing remains. Also used when saving edits to a finished workout.
+     */
+    @Transaction
+    suspend fun pruneWorkout(workoutId: Long): Boolean {
         deleteIncompleteSets(workoutId)
         deleteExercisesWithoutSets(workoutId)
         if (exerciseCount(workoutId) == 0) {
             deleteWorkout(workoutId)
             return false
         }
-        setFinishedAt(workoutId, finishedAt)
         return true
     }
 
@@ -203,9 +228,13 @@ interface WorkoutDao {
                 position = maxPosition(workoutId) + 1,
             ),
         )
-        val setCount = previousSets(exerciseId, workoutId).size.takeIf { it > 0 } ?: DEFAULT_SET_COUNT
+        // Mirror last time's layout, including which sets were warm-ups.
+        val previous = previousSets(exerciseId, workoutId)
+        val warmups = if (previous.isEmpty()) List(DEFAULT_SET_COUNT) { false } else previous.map { it.isWarmup }
         insertSets(
-            (1..setCount).map { SetEntry(workoutExerciseId = workoutExerciseId, setNumber = it) },
+            warmups.mapIndexed { index, isWarmup ->
+                SetEntry(workoutExerciseId = workoutExerciseId, setNumber = index + 1, isWarmup = isWarmup)
+            },
         )
     }
 
@@ -229,8 +258,12 @@ interface WorkoutDao {
             val workoutExerciseId = insertWorkoutExercise(
                 WorkoutExercise(workoutId = workoutId, exerciseId = target.exerciseId, position = index),
             )
+            // The target counts working sets; warm-ups done last time are added in front.
+            val warmups = previousSets(target.exerciseId, workoutId).count { it.isWarmup }
             insertSets(
-                (1..target.targetSets).map { SetEntry(workoutExerciseId = workoutExerciseId, setNumber = it) },
+                (1..warmups + target.targetSets).map {
+                    SetEntry(workoutExerciseId = workoutExerciseId, setNumber = it, isWarmup = it <= warmups)
+                },
             )
         }
         return workoutId
