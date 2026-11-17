@@ -75,6 +75,13 @@ interface WorkoutDao {
     @Query("DELETE FROM workout_exercise WHERE id = :id")
     suspend fun deleteWorkoutExercise(id: Long)
 
+    /** Swaps the exercise in place; sets already logged in this slot are kept. */
+    @Query("UPDATE workout_exercise SET exerciseId = :exerciseId WHERE id = :id")
+    suspend fun setWorkoutExerciseExercise(id: Long, exerciseId: Long)
+
+    @Query("UPDATE workout_exercise SET notes = :notes WHERE id = :id")
+    suspend fun setWorkoutExerciseNotes(id: Long, notes: String)
+
     // --- sets ---
 
     @Insert

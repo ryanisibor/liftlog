@@ -71,6 +71,20 @@ class ActiveWorkoutViewModel(
         viewModelScope.launch { workoutDao.deleteWorkoutExercise(workoutExerciseId) }
     }
 
+    fun swapExercise(workoutExerciseId: Long, newExerciseId: Long) {
+        viewModelScope.launch { workoutDao.setWorkoutExerciseExercise(workoutExerciseId, newExerciseId) }
+    }
+
+    fun setNotes(workoutExerciseId: Long, notes: String) {
+        viewModelScope.launch { workoutDao.setWorkoutExerciseNotes(workoutExerciseId, notes.trim().take(MAX_NOTE_LENGTH)) }
+    }
+
+    /** Removes the bottom set of the exercise, unless it has already been ticked. */
+    fun removeLastSet(exercise: WorkoutExerciseWithSets) {
+        val last = exercise.sets.lastOrNull()?.takeIf { !it.completed } ?: return
+        deleteSet(last.id)
+    }
+
     /** Adds a set, carrying over the weight of the set above it. */
     fun addSet(exercise: WorkoutExerciseWithSets) {
         viewModelScope.launch {
@@ -134,5 +148,9 @@ class ActiveWorkoutViewModel(
             workoutDao.deleteWorkout(workoutId)
             onDone()
         }
+    }
+
+    private companion object {
+        const val MAX_NOTE_LENGTH = 500
     }
 }

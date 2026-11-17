@@ -54,6 +54,8 @@ enum class TopLevelDestination(val route: String, val label: String, val icon: I
 private const val ID = "id"
 private const val ROUTE_ACTIVE_WORKOUT = "workout/{$ID}"
 private const val ROUTE_ADD_EXERCISE = "workout/{$ID}/add"
+private const val SLOT = "slot"
+private const val ROUTE_SWAP_EXERCISE = "workout/{$ID}/swap/{$SLOT}"
 private const val ROUTE_WORKOUT_DETAIL = "history/{$ID}"
 private const val ROUTE_EXERCISE_DETAIL = "exercises/{$ID}"
 
@@ -111,7 +113,27 @@ fun LiftLogApp() {
                 ActiveWorkoutScreen(
                     viewModel = activeWorkoutViewModel(entry),
                     onAddExercise = { navController.navigate("workout/${entry.id()}/add") },
+                    onSwapExercise = { navController.navigate("workout/${entry.id()}/swap/$it") },
                     onClose = { navController.popBackStack() },
+                )
+            }
+            composable(
+                ROUTE_SWAP_EXERCISE,
+                arguments = idArgument + navArgument(SLOT) { type = NavType.LongType },
+            ) { entry ->
+                // Same sharing and double-tap guard as the add-exercise picker below.
+                val workoutEntry = remember(entry) { navController.previousBackStackEntry } ?: return@composable
+                val viewModel = activeWorkoutViewModel(workoutEntry)
+                val slotId = requireNotNull(entry.arguments).getLong(SLOT)
+                ExercisesScreen(
+                    title = "Swap exercise",
+                    onExerciseClick = {
+                        if (navController.currentBackStackEntry == entry) {
+                            viewModel.swapExercise(slotId, it.id)
+                            navController.popBackStack()
+                        }
+                    },
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(ROUTE_ADD_EXERCISE, arguments = idArgument) { entry ->

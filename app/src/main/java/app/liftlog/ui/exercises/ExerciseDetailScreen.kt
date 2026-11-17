@@ -1,6 +1,10 @@
 package app.liftlog.ui.exercises
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.Alignment
+import app.liftlog.ui.components.MuscleDiagramPair
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -42,6 +46,12 @@ import kotlinx.coroutines.flow.stateIn
 
 data class ExerciseSession(val workoutId: Long, val startedAt: Long, val sets: List<ExerciseHistoryRow>)
 
+/** Rows arrive newest session first; groupBy keeps that order. */
+fun groupIntoSessions(rows: List<ExerciseHistoryRow>): List<ExerciseSession> =
+    rows.groupBy { it.workoutId }.map { (workoutId, sets) ->
+        ExerciseSession(workoutId, sets.first().startedAt, sets)
+    }
+
 data class ExerciseDetailState(
     val exercise: Exercise? = null,
     val sessions: List<ExerciseSession> = emptyList(),
@@ -59,11 +69,7 @@ class ExerciseDetailViewModel(
         workoutDao.observeExerciseHistory(exerciseId),
         settings.weightUnit,
     ) { exercise, rows, unit ->
-        // Rows arrive newest session first; groupBy keeps that order.
-        val sessions = rows.groupBy { it.workoutId }.map { (workoutId, sets) ->
-            ExerciseSession(workoutId, sets.first().startedAt, sets)
-        }
-        ExerciseDetailState(exercise, sessions, unit)
+        ExerciseDetailState(exercise, groupIntoSessions(rows), unit)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ExerciseDetailState())
 }
 
@@ -96,6 +102,15 @@ fun ExerciseDetailScreen(exerciseId: Long, onBack: () -> Unit) {
         ) {
             if (exercise != null) {
                 item {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+                        MuscleDiagramPair(
+                            exercise.primaryMuscle,
+                            exercise.secondaryMuscles,
+                            Modifier.height(190.dp),
+                        )
+                    }
+                }
+                item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Main muscle: ${exercise.primaryMuscle.label}")
                         if (exercise.secondaryMuscles.isNotEmpty()) {
@@ -117,14 +132,20 @@ fun ExerciseDetailScreen(exerciseId: Long, onBack: () -> Unit) {
                 }
             }
             items(state.sessions, key = { it.workoutId }) { session ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(formatDate(session.startedAt), style = MaterialTheme.typography.titleSmall)
-                        session.sets.forEachIndexed { index, set ->
-                            Text("${index + 1}.  ${formatSet(set.weightKg, set.reps, state.unit)} ${weightSuffix(set, state.unit)}")
-                        }
-                    }
-                }
+                ExerciseSessionCard(session, state.unit)
+            }
+        }
+    }
+}
+
+/** One past session of an exercise: the date and each completed set. */
+@Composable
+fun ExerciseSessionCard(session: ExerciseSession, unit: WeightUnit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(formatDate(session.startedAt), style = MaterialTheme.typography.titleSmall)
+            session.sets.forEachIndexed { index, set ->
+                Text("${index + 1}.  ${formatSet(set.weightKg, set.reps, unit)} ${weightSuffix(set, unit)}")
             }
         }
     }
