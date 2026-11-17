@@ -18,6 +18,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
@@ -55,6 +57,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.liftlog.data.db.ProgramDayExercise
 import app.liftlog.data.db.SetEntry
 import app.liftlog.data.db.WorkoutExerciseWithSets
 import app.liftlog.domain.WeightUnit
@@ -74,6 +77,9 @@ internal class ExercisePageActions(
     val onSwap: () -> Unit,
     val onNotes: () -> Unit,
     val onRemove: () -> Unit,
+    /** Null when the exercise is already first or last. */
+    val onMoveEarlier: (() -> Unit)?,
+    val onMoveLater: (() -> Unit)?,
 )
 
 /** One exercise of the workout: muscle diagram, name, actions and the set table. */
@@ -82,6 +88,7 @@ internal fun ExercisePage(
     exercise: WorkoutExerciseWithSets,
     previousSets: List<SetEntry>,
     unit: WeightUnit,
+    target: ProgramDayExercise?,
     actions: ExercisePageActions,
 ) {
     val notes = exercise.workoutExercise.notes
@@ -108,6 +115,15 @@ internal fun ExercisePage(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (target != null) {
+                val reps = if (target.repMin == target.repMax) "${target.repMin}" else "${target.repMin}–${target.repMax}"
+                Text(
+                    "Target: ${target.targetSets} sets of $reps reps",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
             if (notes.isNotEmpty()) {
                 Text(
                     notes,
@@ -131,6 +147,8 @@ internal fun ExercisePage(
             ActionChip("History", Icons.Default.DateRange, actions.onHistory)
             ActionChip("Swap", Icons.Default.Refresh, actions.onSwap)
             ActionChip(if (notes.isEmpty()) "Add note" else "Edit note", Icons.Default.Edit, actions.onNotes)
+            actions.onMoveEarlier?.let { ActionChip("Move earlier", Icons.AutoMirrored.Filled.KeyboardArrowLeft, it) }
+            actions.onMoveLater?.let { ActionChip("Move later", Icons.AutoMirrored.Filled.KeyboardArrowRight, it) }
             ActionChip("Remove", Icons.Default.Delete, actions.onRemove, destructive = true)
         }
 

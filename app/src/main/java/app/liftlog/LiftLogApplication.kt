@@ -19,6 +19,7 @@ class AppContainer(private val context: Context) {
     val database: AppDatabase by lazy { AppDatabase.create(context) }
     val exerciseDao get() = database.exerciseDao()
     val workoutDao get() = database.workoutDao()
+    val programDao get() = database.programDao()
     val settings = SettingsRepository(context)
     val restTimer = RestTimer(context)
     val backup by lazy { BackupRepository(context, database.backupDao(), exerciseDao) }

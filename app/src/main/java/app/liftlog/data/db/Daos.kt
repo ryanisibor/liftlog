@@ -185,6 +185,42 @@ interface WorkoutDao {
         )
     }
 
+    // --- program-based workouts ---
+
+    @Query("SELECT * FROM program_day_exercise WHERE programDayId = :dayId ORDER BY position")
+    suspend fun dayExercises(dayId: Long): List<ProgramDayExercise>
+
+    @Query("SELECT * FROM program_day_exercise WHERE programDayId = :dayId")
+    fun observeDayTargets(dayId: Long): Flow<List<ProgramDayExercise>>
+
+    /**
+     * Starts a workout pre-filled from a program day, one empty set per target set.
+     * If a workout is already in progress, returns that one instead of starting another.
+     */
+    @Transaction
+    suspend fun startWorkoutFromDay(dayId: Long, startedAt: Long): Long {
+        activeWorkoutId()?.let { return it }
+        val workoutId = insertWorkout(Workout(programDayId = dayId, startedAt = startedAt))
+        dayExercises(dayId).forEachIndexed { index, target ->
+            val workoutExerciseId = insertWorkoutExercise(
+                WorkoutExercise(workoutId = workoutId, exerciseId = target.exerciseId, position = index),
+            )
+            insertSets(
+                (1..target.targetSets).map { SetEntry(workoutExerciseId = workoutExerciseId, setNumber = it) },
+            )
+        }
+        return workoutId
+    }
+
+    @Query("UPDATE workout_exercise SET position = :position WHERE id = :id")
+    suspend fun setWorkoutExercisePosition(id: Long, position: Int)
+
+    @Transaction
+    suspend fun swapWorkoutExercises(first: WorkoutExercise, second: WorkoutExercise) {
+        setWorkoutExercisePosition(first.id, second.position)
+        setWorkoutExercisePosition(second.id, first.position)
+    }
+
     private companion object {
         const val DEFAULT_SET_COUNT = 3
     }

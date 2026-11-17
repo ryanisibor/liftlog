@@ -36,7 +36,13 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import app.liftlog.ui.exercises.ExerciseDetailScreen
 import app.liftlog.ui.exercises.ExercisesScreen
+import app.liftlog.ui.home.HistoryScreen
+import app.liftlog.ui.home.HomeNavigation
 import app.liftlog.ui.home.HomeScreen
+import app.liftlog.ui.programs.DayEditorScreen
+import app.liftlog.ui.programs.DayEditorViewModel
+import app.liftlog.ui.programs.ProgramEditorScreen
+import app.liftlog.ui.programs.ProgramsScreen
 import app.liftlog.ui.settings.SettingsScreen
 import app.liftlog.ui.workout.ActiveWorkoutScreen
 import app.liftlog.ui.workout.ActiveWorkoutViewModel
@@ -58,6 +64,10 @@ private const val SLOT = "slot"
 private const val ROUTE_SWAP_EXERCISE = "workout/{$ID}/swap/{$SLOT}"
 private const val ROUTE_WORKOUT_DETAIL = "history/{$ID}"
 private const val ROUTE_EXERCISE_DETAIL = "exercises/{$ID}"
+private const val ROUTE_HISTORY = "history"
+private const val ROUTE_PROGRAM = "program/{$ID}"
+private const val ROUTE_DAY = "day/{$ID}"
+private const val ROUTE_DAY_ADD_EXERCISE = "day/{$ID}/add"
 
 private val idArgument = listOf(navArgument(ID) { type = NavType.LongType })
 
@@ -95,11 +105,52 @@ fun LiftLogApp() {
         ) {
             composable(TopLevelDestination.Home.route) {
                 HomeScreen(
-                    onOpenActiveWorkout = { navController.navigate("workout/$it") },
-                    onOpenFinishedWorkout = { navController.navigate("history/$it") },
+                    HomeNavigation(
+                        openActiveWorkout = { navController.navigate("workout/$it") },
+                        openHistory = { navController.navigate(ROUTE_HISTORY) },
+                        openProgram = { navController.navigate("program/$it") },
+                        openPrograms = { navController.navigateToTopLevel(TopLevelDestination.Programs) },
+                    ),
                 )
             }
-            composable(TopLevelDestination.Programs.route) { ComingSoonScreen("Programs") }
+            composable(ROUTE_HISTORY) {
+                HistoryScreen(
+                    onOpenWorkout = { navController.navigate("history/$it") },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(TopLevelDestination.Programs.route) {
+                ProgramsScreen(onOpenProgram = { navController.navigate("program/$it") })
+            }
+            composable(ROUTE_PROGRAM, arguments = idArgument) { entry ->
+                ProgramEditorScreen(
+                    programId = entry.id(),
+                    onOpenDay = { navController.navigate("day/$it") },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(ROUTE_DAY, arguments = idArgument) { entry ->
+                DayEditorScreen(
+                    viewModel = dayEditorViewModel(entry),
+                    onAddExercise = { navController.navigate("day/${entry.id()}/add") },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(ROUTE_DAY_ADD_EXERCISE, arguments = idArgument) { entry ->
+                // Same sharing and double-tap guard as the workout's add-exercise picker.
+                val dayEntry = remember(entry) { navController.previousBackStackEntry } ?: return@composable
+                val viewModel = dayEditorViewModel(dayEntry)
+                ExercisesScreen(
+                    title = "Add exercise",
+                    onExerciseClick = {
+                        if (navController.currentBackStackEntry == entry) {
+                            viewModel.addExercise(it.id)
+                            navController.popBackStack()
+                        }
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
             composable(TopLevelDestination.Exercises.route) {
                 ExercisesScreen(
                     title = "Exercises",
@@ -170,6 +221,15 @@ private fun activeWorkoutViewModel(workoutEntry: NavBackStackEntry): ActiveWorko
     val workoutId = workoutEntry.id()
     return viewModel(viewModelStoreOwner = workoutEntry) {
         ActiveWorkoutViewModel(workoutId, container.workoutDao, container.settings, container.restTimer)
+    }
+}
+
+@Composable
+private fun dayEditorViewModel(dayEntry: NavBackStackEntry): DayEditorViewModel {
+    val container = appContainer()
+    val dayId = dayEntry.id()
+    return viewModel(viewModelStoreOwner = dayEntry) {
+        DayEditorViewModel(dayId, container.programDao, container.settings)
     }
 }
 

@@ -150,7 +150,14 @@ fun ActiveWorkoutScreen(
                         exercise = exercise,
                         previousSets = current.previousSets[exercise.workoutExercise.id].orEmpty(),
                         unit = current.unit,
+                        target = current.targets[exercise.exercise.id],
                         actions = ExercisePageActions(
+                            onMoveEarlier = if (page == 0) null else {
+                                { viewModel.moveExercise(exercise, -1); scope.launch { pagerState.scrollToPage(page - 1) } }
+                            },
+                            onMoveLater = if (page == exercises.lastIndex) null else {
+                                { viewModel.moveExercise(exercise, 1); scope.launch { pagerState.scrollToPage(page + 1) } }
+                            },
                             onWeightTyped = { setId, text -> viewModel.onWeightTyped(setId, text, current.unit) },
                             onRepsTyped = viewModel::onRepsTyped,
                             onToggle = { set, previous -> viewModel.toggleCompleted(set, previous, current.restSeconds) },

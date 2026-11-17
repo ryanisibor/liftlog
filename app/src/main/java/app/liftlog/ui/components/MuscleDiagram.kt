@@ -109,6 +109,15 @@ fun MuscleDiagram(
     secondary: List<Muscle>,
     view: BodyView,
     modifier: Modifier = Modifier,
+) = MuscleDiagram(setOf(primary), secondary.toSet(), view, modifier)
+
+/** One figure highlighting several main muscles at once, as for a whole training day. */
+@Composable
+fun MuscleDiagram(
+    primary: Set<Muscle>,
+    secondary: Set<Muscle>,
+    view: BodyView,
+    modifier: Modifier = Modifier,
 ) {
     val bodyColor = MaterialTheme.colorScheme.surfaceContainerHighest
     val idleColor = MaterialTheme.colorScheme.outlineVariant
@@ -128,7 +137,7 @@ fun MuscleDiagram(
             body.forEach { draw(it, bodyColor) }
             regions.forEach { (muscle, region) ->
                 val color = when {
-                    primary == Muscle.FULL_BODY || muscle == primary -> primaryColor
+                    Muscle.FULL_BODY in primary || muscle in primary -> primaryColor
                     muscle in secondary -> secondaryColor
                     else -> idleColor
                 }
@@ -145,9 +154,17 @@ fun MuscleDiagramPair(
     primary: Muscle,
     secondary: List<Muscle>,
     modifier: Modifier = Modifier,
+) = MuscleDiagramPair(setOf(primary), secondary.toSet(), modifier)
+
+/** Front and back figures for several main muscles at once. */
+@Composable
+fun MuscleDiagramPair(
+    primary: Set<Muscle>,
+    secondary: Set<Muscle>,
+    modifier: Modifier = Modifier,
 ) {
     val description = buildString {
-        append("Main muscle: ${primary.label}")
+        append("Main muscles: ${primary.joinToString { it.label }}")
         if (secondary.isNotEmpty()) append(". Also works: ${secondary.joinToString { it.label }}")
     }
     Row(

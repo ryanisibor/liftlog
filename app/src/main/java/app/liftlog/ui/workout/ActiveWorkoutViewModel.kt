@@ -3,6 +3,7 @@ package app.liftlog.ui.workout
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.liftlog.data.SettingsRepository
+import app.liftlog.data.db.ProgramDayExercise
 import app.liftlog.data.db.SetEntry
 import app.liftlog.data.db.Workout
 import app.liftlog.data.db.WorkoutDao
@@ -16,6 +17,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -28,6 +31,8 @@ data class WorkoutState(
     val previousSets: Map<Long, List<SetEntry>>,
     val unit: WeightUnit,
     val restSeconds: Int,
+    /** Target sets and rep range from the program, keyed by exercise id; empty for ad-hoc workouts. */
+    val targets: Map<Long, ProgramDayExercise> = emptyMap(),
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -50,18 +55,37 @@ class ActiveWorkoutViewModel(
             }
         }
 
+    // The program day's targets, if this workout was started from one.
+    private val targets = workoutDao.observeWorkout(workoutId)
+        .map { it?.programDayId }
+        .distinctUntilChanged()
+        .flatMapLatest { dayId -> if (dayId == null) flowOf(emptyList()) else workoutDao.observeDayTargets(dayId) }
+        .map { list -> list.associateBy { it.exerciseId } }
+
     /** Null while loading, and again once the workout has been finished or discarded. */
     val state: StateFlow<WorkoutState?> = combine(
-        workoutDao.observeWorkout(workoutId),
-        exercises,
-        previousSets,
-        settings.weightUnit,
-        settings.restSeconds,
-    ) { workout, exerciseList, previous, unit, restSeconds ->
-        workout?.let { WorkoutState(it, exerciseList, previous, unit, restSeconds) }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        combine(
+            workoutDao.observeWorkout(workoutId),
+            exercises,
+            previousSets,
+            settings.weightUnit,
+            settings.restSeconds,
+        ) { workout, exerciseList, previous, unit, restSeconds ->
+            workout?.let { WorkoutState(it, exerciseList, previous, unit, restSeconds) }
+        },
+        targets,
+    ) { state, targetMap -> state?.copy(targets = targetMap) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val restEndsAt: StateFlow<Long?> = restTimer.endsAt
+
+    /** Moves an exercise one place earlier (-1) or later (+1) in the workout. */
+    fun moveExercise(exercise: WorkoutExerciseWithSets, direction: Int) {
+        val list = state.value?.exercises ?: return
+        val index = list.indexOfFirst { it.workoutExercise.id == exercise.workoutExercise.id }
+        val other = list.getOrNull(index + direction) ?: return
+        viewModelScope.launch { workoutDao.swapWorkoutExercises(exercise.workoutExercise, other.workoutExercise) }
+    }
 
     fun addExercise(exerciseId: Long) {
         viewModelScope.launch { workoutDao.addExerciseToWorkout(workoutId, exerciseId) }
